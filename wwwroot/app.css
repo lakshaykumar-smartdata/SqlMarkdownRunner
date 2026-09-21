@@ -235,3 +235,5 @@ table.grid td button { padding: .3rem .6rem; font-size: .78rem; box-shadow: none
 .rendered tbody tr:hover td { background: var(--accent-wash); }
 
 .form label > span { display: inline-flex; align-items: baseline; gap: .25rem; }
+table.grid.history td { vertical-align: top; }
+pre.sql { margin: 0; max-height: 8rem; overflow: auto; white-space: pre-wrap; font-size: .8125rem; line-height: 1.5; color: #1d2939; }

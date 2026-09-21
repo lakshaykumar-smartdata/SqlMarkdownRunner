@@ -5,6 +5,7 @@ get the query + results back as one markdown document to copy or download into a
 
 - **Connections** page → saved to `connections.json` in this folder (hand-editable, gitignored).
 - **Run SQL** page → pick a connection, run, copy/download the markdown.
+- **History** page → the last 200 runs per connection, saved to `history.json` (also gitignored). Open reloads a query into the editor.
 
 ```bash
 dotnet run --project SqlMarkdownRunner.csproj

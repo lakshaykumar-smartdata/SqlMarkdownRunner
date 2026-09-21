@@ -1,0 +1,90 @@
+@page "/history"
+@inject ConnectionStore Store
+@inject HistoryStore Hist
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+
+<PageTitle>Query history</PageTitle>
+
+<h1>Query history</h1>
+<p class="muted">Last @HistoryStore.MaxEntries runs, stored in <code>@Hist.FilePath</code>.</p>
+
+<div class="form">
+    <div class="row">
+        <label>Connection
+            <select @bind="_filter" @bind:after="Reload">
+                <option value="">All connections</option>
+                @foreach (var name in _connections)
+                {
+                    <option value="@name">@name</option>
+                }
+            </select>
+        </label>
+        <button @onclick="ClearAsync" disabled="@(_entries.Count == 0)">
+            @(_filter == "" ? "Clear all history" : $"Clear history for \u201c{_filter}\u201d")
+        </button>
+        <span class="muted">@_copied</span>
+    </div>
+</div>
+
+@if (_entries.Count == 0)
+{
+    <p class="muted" style="margin-top:1.25rem">Nothing here yet \u2014 run a query and it will show up.</p>
+}
+else
+{
+    <table class="grid history">
+        <thead>
+            <tr><th style="width:10rem">Run at</th><th style="width:10rem">Connection</th><th>SQL</th><th style="width:1%"></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var e in _entries)
+            {
+                <tr>
+                    <td class="nowrap">@e.RunAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                    <td>@e.Connection</td>
+                    <td><pre class="sql">@e.Sql</pre></td>
+                    <td class="nowrap">
+                        <button @onclick="() => Open(e)">Open</button>
+                        <button @onclick="() => CopyAsync(e)">Copy</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<string> _connections = [];
+    private List<HistoryEntry> _entries = [];
+    private string _filter = "";
+    private string? _copied;
+
+    protected override void OnInitialized()
+    {
+        _connections = Store.Load().Select(c => c.Name).ToList();
+        Reload();
+    }
+
+    private void Reload()
+    {
+        _copied = null;
+        _entries = Hist.Load().Where(e => _filter == "" || e.Connection == _filter).ToList();
+    }
+
+    private void Open(HistoryEntry e) => Nav.NavigateTo($"/?from={e.Id}");
+
+    private async Task CopyAsync(HistoryEntry e)
+    {
+        await JS.InvokeVoidAsync("smr.copy", e.Sql);
+        _copied = "SQL copied.";
+    }
+
+    private async Task ClearAsync()
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"Delete {_entries.Count} history entr{(_entries.Count == 1 ? "y" : "ies")}?")) return;
+        Hist.Clear(_filter == "" ? null : _filter);
+        Reload();
+    }
+}

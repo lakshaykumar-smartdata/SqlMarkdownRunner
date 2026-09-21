@@ -1,6 +1,7 @@
 @page "/"
 @using Markdig
 @inject ConnectionStore Store
+@inject HistoryStore History
 @inject IJSRuntime JS
 @rendermode InteractiveServer
 
@@ -63,10 +64,21 @@
     private static readonly MarkdownPipeline Pipeline =
         new MarkdownPipelineBuilder().UsePipeTables().DisableHtml().Build();
 
+    /// <summary>Set by the history page's "Open" button to reload a past query.</summary>
+    [SupplyParameterFromQuery(Name = "from")] public string? From { get; set; }
+
     protected override void OnInitialized()
     {
         _connections = Store.Load();
-        _selected = _connections.FirstOrDefault()?.Name;
+
+        var past = From is null ? null : History.Find(From);
+        if (past is not null)
+        {
+            _sql = past.Sql;
+            if (_connections.Any(c => c.Name == past.Connection)) _selected = past.Connection;
+        }
+
+        _selected ??= _connections.FirstOrDefault()?.Name;
     }
 
     private async Task RunAsync()
@@ -86,6 +98,8 @@
         {
             _running = false;
         }
+
+        History.Add(entry.Name, _sql);
     }
 
     private void Clear() => (_sql, _markdown, _rendered, _copied) = ("", null, default, null);
