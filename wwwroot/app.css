@@ -257,3 +257,10 @@ pre.sql { margin: 0; max-height: 8rem; overflow: auto; white-space: pre-wrap; fo
     .workspace { grid-template-columns: minmax(0, 1fr); }
     .objects { position: static; max-height: 24rem; }
 }
+
+.objects details > summary { list-style-position: inside; }
+.objects details[open] > summary { color: var(--accent-dark); font-weight: 600; }
+.objects-cols { margin: 0 0 .35rem .9rem; border-left: 1px solid var(--line); padding-left: .5rem; }
+.objects-col { display: flex; justify-content: space-between; gap: .6rem; font-family: "Cascadia Mono", Consolas, monospace; font-size: .73rem; padding: .12rem .35rem; border-radius: 4px; cursor: grab; }
+.objects-col:hover { background: var(--accent-wash); }
+.objects-col .muted { font-size: .68rem; white-space: nowrap; }

@@ -71,7 +71,24 @@
                     <div class="objects-kind">@group.Key <span class="muted">@group.Count()</span></div>
                     @foreach (var o in group)
                     {
-                        <div class="objects-item" draggable="true" data-drag="@o.DragText" title="@o.DragText">@o.Name</div>
+                        @if (o.Columns.Count > 0)
+                        {
+                            <details>
+                                <summary class="objects-item" draggable="true" data-drag="@o.DragText" title="@o.DragText">@o.Name</summary>
+                                <div class="objects-cols">
+                                    @foreach (var col in o.Columns)
+                                    {
+                                        <div class="objects-col" draggable="true" data-drag="@col.Name">
+                                            <span>@col.Name</span><span class="muted">@col.Type</span>
+                                        </div>
+                                    }
+                                </div>
+                            </details>
+                        }
+                        else
+                        {
+                            <div class="objects-item" draggable="true" data-drag="@o.DragText" title="@o.DragText">@o.Name</div>
+                        }
                     }
                 </div>
             }

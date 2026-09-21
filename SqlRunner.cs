@@ -6,7 +6,9 @@ using Microsoft.Data.SqlClient;
 
 namespace SqlMarkdownRunner;
 
-public record DbObject(string Kind, string Name, string DragText);
+public record DbColumn(string Name, string Type);
+
+public record DbObject(string Kind, string Name, string DragText, List<DbColumn> Columns);
 
 public partial class SqlRunner
 {
@@ -200,6 +202,13 @@ public partial class SqlRunner
             JOIN sys.types t ON t.user_type_id = p.user_type_id
             WHERE p.parameter_id > 0
             ORDER BY p.object_id, p.parameter_id;
+
+            SELECT c.object_id, c.name, t.name AS type_name, c.max_length, c.precision, c.scale
+            FROM sys.columns c
+            JOIN sys.objects o ON o.object_id = c.object_id
+            JOIN sys.types t ON t.user_type_id = c.user_type_id
+            WHERE o.type IN ('U', 'V') AND o.is_ms_shipped = 0
+            ORDER BY c.object_id, c.column_id;
             """;
 
         await using var conn = new SqlConnection(entry.ConnectionString);
@@ -224,8 +233,23 @@ public partial class SqlRunner
                 reader.GetBoolean(6)));
         }
 
+        var columns = new Dictionary<int, List<DbColumn>>();
+        await reader.NextResultAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            var id = reader.GetInt32(0);
+            if (!columns.TryGetValue(id, out var list)) columns[id] = list = [];
+            list.Add(new DbColumn(
+                reader.GetString(1),
+                FormatType(reader.GetString(2), reader.GetInt16(3), reader.GetByte(4), reader.GetByte(5))));
+        }
+
         return rows
-            .Select(r => new DbObject(Kind(r.Type), r.Name, CallTemplate(r.Type, r.Name, parameters.GetValueOrDefault(r.Id, []))))
+            .Select(r => new DbObject(
+                Kind(r.Type),
+                r.Name,
+                CallTemplate(r.Type, r.Name, parameters.GetValueOrDefault(r.Id, [])),
+                columns.GetValueOrDefault(r.Id, [])))
             .ToList();
     }
 
