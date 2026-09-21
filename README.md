@@ -11,7 +11,9 @@ get the query + results back as one markdown document to copy or download into a
 dotnet run --project SqlMarkdownRunner.csproj
 ```
 
-Self-check for the GO-splitting logic: `dotnet run -- --selftest`
+An UPDATE or DELETE with no WHERE clause asks for confirmation before it runs.
+
+Self-check for the GO-splitting and WHERE-detection logic: `dotnet run -- --selftest`
 
 Notes: credentials are never written into the markdown (server/database only).
 Result sets are capped at 500 rows (`SqlRunner.MaxRowsPerResultSet`).

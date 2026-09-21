@@ -16,6 +16,47 @@ public partial class SqlRunner
 
     public const int MaxRowsPerResultSet = 500;
 
+    // Blanked out before scanning so a "where" inside a comment or a string literal doesn't count.
+    [GeneratedRegex(@"--[^\r\n]*|/\*.*?\*/|N?'(?:[^']|'')*'", RegexOptions.Singleline)]
+    private static partial Regex CommentsAndLiterals();
+
+    [GeneratedRegex(@"\b(update|delete)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex Mutations();
+
+    [GeneratedRegex(@"\b(select|insert|update|delete|merge|create|alter|drop|truncate|print|declare|exec|execute|commit|rollback|use|go|begin|if|while)\b|;", RegexOptions.IgnoreCase)]
+    private static partial Regex StatementBoundary();
+
+    [GeneratedRegex(@"\bwhere\b", RegexOptions.IgnoreCase)]
+    private static partial Regex Where();
+
+    /// <summary>
+    /// UPDATE/DELETE statements in the script that carry no WHERE clause, summarised for a prompt.
+    /// </summary>
+    public static List<string> StatementsMissingWhere(string sql)
+    {
+        // Same length, so offsets still line up with the original text for the summary below.
+        var clean = CommentsAndLiterals().Replace(sql, m => new string(' ', m.Length));
+
+        var found = new List<string>();
+        foreach (Match m in Mutations().Matches(clean))
+        {
+            // ponytail: the statement ends at the next statement keyword, so a subquery in a SET
+            // clause cuts it short and costs one extra confirmation. Erring towards asking.
+            var next = StatementBoundary().Match(clean, m.Index + m.Length);
+            var end = next.Success ? next.Index : clean.Length;
+
+            if (!Where().IsMatch(clean[m.Index..end]))
+                found.Add(Summarise(sql[m.Index..end]));
+        }
+        return found;
+    }
+
+    private static string Summarise(string statement)
+    {
+        var oneLine = string.Join(' ', statement.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return oneLine.Length <= 120 ? oneLine : oneLine[..120] + "…";
+    }
+
     public static IEnumerable<string> SplitBatches(string sql)
     {
         var last = 0;

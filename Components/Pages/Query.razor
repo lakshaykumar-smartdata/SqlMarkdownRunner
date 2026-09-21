@@ -86,6 +86,8 @@
         var entry = _connections.FirstOrDefault(c => c.Name == _selected);
         if (entry is null || string.IsNullOrWhiteSpace(_sql)) return;
 
+        if (!await ConfirmUnfilteredWritesAsync()) return;
+
         (_running, _copied) = (true, null);
         try
         {
@@ -100,6 +102,20 @@
         }
 
         History.Add(entry.Name, _sql);
+    }
+
+    /// <summary>An UPDATE or DELETE with no WHERE hits every row, so make the user say yes first.</summary>
+    private async Task<bool> ConfirmUnfilteredWritesAsync()
+    {
+        var risky = SqlRunner.StatementsMissingWhere(_sql);
+        if (risky.Count == 0) return true;
+
+        var what = risky.Count == 1 ? "This statement has" : $"These {risky.Count} statements have";
+        var prompt = $"{what} no WHERE clause:\n\n"
+                     + string.Join("\n", risky.Select(r => "    " + r))
+                     + "\n\nEvery row in the target table will be affected. Run anyway?";
+
+        return await JS.InvokeAsync<bool>("confirm", prompt);
     }
 
     private void Clear() => (_sql, _markdown, _rendered, _copied) = ("", null, default, null);

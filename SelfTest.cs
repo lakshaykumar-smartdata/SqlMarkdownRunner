@@ -19,6 +19,23 @@ public static class SelfTest
         Debug.Assert(Split("select 1\nGO\nGO\nselect 2").SequenceEqual(["select 1", "select 2"]));
         Debug.Assert(Split("   \n  \n").Length == 0);
 
+        int Risky(string sql) => SqlRunner.StatementsMissingWhere(sql).Count;
+
+        Debug.Assert(Risky("select * from t") == 0);
+        Debug.Assert(Risky("delete from t") == 1);
+        Debug.Assert(Risky("DELETE FROM t") == 1);                                 // case
+        Debug.Assert(Risky("delete from t where id = 1") == 0);
+        Debug.Assert(Risky("update t set a = 1") == 1);
+        Debug.Assert(Risky("update t set a = 1 where id = 2") == 0);
+        Debug.Assert(Risky("update t set a = 1 -- where id = 2") == 1);            // comment is not a WHERE
+        Debug.Assert(Risky("delete from t /* where id=1 */") == 1);
+        Debug.Assert(Risky("delete from t where note = 'where'") == 0);
+        Debug.Assert(Risky("insert into t values ('delete from x')") == 0);        // literal is not a statement
+        Debug.Assert(Risky("update a set x=1 where id=1; delete from b") == 1);    // only the second one
+        Debug.Assert(Risky("delete from a\nupdate b set x=1 where id=1") == 1);    // only the first one
+        Debug.Assert(Risky("delete from a\nGO\ndelete from b") == 2);
+        Debug.Assert(SqlRunner.StatementsMissingWhere("delete   from\n  t").Single() == "delete from t");
+
         Console.WriteLine("self-test: OK");
     }
 }
