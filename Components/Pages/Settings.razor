@@ -1,0 +1,164 @@
+@page "/settings"
+@using Microsoft.Data.SqlClient
+@inject ConnectionStore Store
+@rendermode InteractiveServer
+
+<PageTitle>Connections</PageTitle>
+
+<h1>Database connections</h1>
+<p class="muted">Stored in <code>@Store.FilePath</code> — edit that file by hand any time.</p>
+
+<table class="grid">
+    <thead>
+        <tr><th>Name</th><th>Server / database</th><th style="width:1%"></th></tr>
+    </thead>
+    <tbody>
+        @foreach (var c in _connections)
+        {
+            <tr>
+                <td>@c.Name</td>
+                <td><code>@SqlRunner.Describe(c.ConnectionString)</code></td>
+                <td class="nowrap">
+                    <button @onclick="() => Edit(c)">Edit</button>
+                    <button @onclick="() => Delete(c)">Delete</button>
+                </td>
+            </tr>
+        }
+        @if (_connections.Count == 0)
+        {
+            <tr><td colspan="3" class="muted">No connections yet.</td></tr>
+        }
+    </tbody>
+</table>
+
+<h2>@(_editingOriginal is null ? "Add connection" : $"Edit “{_editingOriginal}”")</h2>
+<div class="form">
+    <label>Name<input @bind="_name" placeholder="Reporting DB" /></label>
+
+    <label>Connection string — paste straight from appsettings.json (surrounding quotes are fine)
+        <textarea @bind="ConnectionString" rows="3" spellcheck="false" class="mono"
+                  placeholder="Data Source=localhost;Initial Catalog=MyDb;User Id=sa;Password=..."></textarea>
+    </label>
+
+    <fieldset>
+        <legend>… or fill the fields (they stay in sync with the string above)</legend>
+        <div class="row">
+            <label>Server<input @bind="_builder.DataSource" @bind:after="SyncFromFields" placeholder="localhost\SQLEXPRESS" /></label>
+            <label>Database<input @bind="_builder.InitialCatalog" @bind:after="SyncFromFields" placeholder="MyDatabase" /></label>
+        </div>
+        <div class="row">
+            <label class="check"><input type="checkbox" @bind="_builder.IntegratedSecurity" @bind:after="SyncFromFields" /> Windows auth</label>
+            <label>User Id<input @bind="_builder.UserID" @bind:after="SyncFromFields" disabled="@_builder.IntegratedSecurity" /></label>
+            <label>Password<input type="password" @bind="_builder.Password" @bind:after="SyncFromFields" disabled="@_builder.IntegratedSecurity" /></label>
+        </div>
+        <div class="row">
+            <label class="check"><input type="checkbox" @bind="_builder.TrustServerCertificate" @bind:after="SyncFromFields" /> Trust server certificate</label>
+            <label class="check"><input type="checkbox" @bind="_builder.MultipleActiveResultSets" @bind:after="SyncFromFields" /> MultipleActiveResultSets</label>
+        </div>
+    </fieldset>
+
+    <div class="row">
+        <button class="primary" @onclick="Save">Save</button>
+        <button @onclick="TestAsync" disabled="@_testing">Test</button>
+        <button @onclick="ClearForm">@(_editingOriginal is null ? "Clear" : "Cancel")</button>
+        <span class="@(_status.StartsWith("OK") ? "ok" : "err")">@_status</span>
+    </div>
+</div>
+
+@code {
+    private List<DbConnectionEntry> _connections = [];
+    private SqlConnectionStringBuilder _builder = new();
+    private string _name = "", _connectionString = "", _status = "";
+    private string? _editingOriginal;
+    private bool _testing;
+
+    protected override void OnInitialized() => _connections = Store.Load();
+
+    /// <summary>Raw string is the source of truth; every edit re-populates the fields below it.</summary>
+    private string ConnectionString
+    {
+        get => _connectionString;
+        set
+        {
+            _connectionString = Normalise(value);
+            try { _builder = new SqlConnectionStringBuilder(_connectionString); }
+            catch { /* leave the fields alone until the string parses */ }
+            DefaultNameFromDatabase();
+        }
+    }
+
+    private void SyncFromFields()
+    {
+        _connectionString = _builder.ConnectionString;
+        DefaultNameFromDatabase();
+    }
+
+    /// <summary>Name the connection after the database, unless the user typed one.</summary>
+    private void DefaultNameFromDatabase()
+    {
+        if (string.IsNullOrWhiteSpace(_name)) _name = _builder.InitialCatalog;
+    }
+
+    /// <summary>Devs copy the value out of appsettings.json, quotes and all.</summary>
+    private static string Normalise(string s) => s.Trim().Trim('"').Trim();
+
+    private void Edit(DbConnectionEntry c)
+    {
+        (_editingOriginal, _name, _status) = (c.Name, c.Name, "");
+        ConnectionString = c.ConnectionString;
+    }
+
+    private void Delete(DbConnectionEntry c)
+    {
+        _connections.RemoveAll(x => x.Name == c.Name);
+        Store.Save(_connections);
+        if (_editingOriginal == c.Name) ClearForm();
+    }
+
+    private void Save()
+    {
+        if (string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_connectionString))
+        {
+            _status = "Name and connection string are both required.";
+            return;
+        }
+        if (_name != _editingOriginal && _connections.Any(c => c.Name == _name))
+        {
+            _status = $"A connection named “{_name}” already exists.";
+            return;
+        }
+
+        var entry = new DbConnectionEntry(_name.Trim(), _connectionString.Trim());
+        var index = _editingOriginal is null ? -1 : _connections.FindIndex(c => c.Name == _editingOriginal);
+        if (index >= 0) _connections[index] = entry; else _connections.Add(entry);
+
+        Store.Save(_connections);
+        ClearForm();
+        _status = "OK — saved.";
+    }
+
+    private async Task TestAsync()
+    {
+        _testing = true;
+        try
+        {
+            await using var conn = new SqlConnection(_connectionString);
+            await conn.OpenAsync();
+            _status = $"OK — connected to {conn.DataSource}/{conn.Database}.";
+        }
+        catch (Exception ex)
+        {
+            _status = ex.Message;
+        }
+        finally
+        {
+            _testing = false;
+        }
+    }
+
+    private void ClearForm()
+    {
+        (_editingOriginal, _name, _connectionString, _status) = (null, "", "", "");
+        _builder = new SqlConnectionStringBuilder();
+    }
+}

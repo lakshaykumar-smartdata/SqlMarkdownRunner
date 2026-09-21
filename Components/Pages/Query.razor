@@ -1,0 +1,101 @@
+@page "/"
+@using Markdig
+@inject ConnectionStore Store
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+
+<PageTitle>SQL to markdown</PageTitle>
+
+<h1>Run SQL</h1>
+
+@if (_connections.Count == 0)
+{
+    <p class="err">No connections yet — <a href="settings">add one first</a>.</p>
+}
+
+<div class="form">
+    <div class="row">
+        <label>Connection
+            <select @bind="_selected">
+                @foreach (var c in _connections)
+                {
+                    <option value="@c.Name">@c.Name</option>
+                }
+            </select>
+        </label>
+        <label>Timeout (s)<input type="number" min="1" max="3600" @bind="_timeout" style="width:6rem" /></label>
+    </div>
+    <label><span>SQL — <code>GO</code> batch separators supported</span>
+        <textarea @bind="_sql" rows="14" spellcheck="false" class="mono"
+                  placeholder="SELECT TOP 10 * FROM sys.tables;"></textarea>
+    </label>
+    <div class="row">
+        <button class="primary" @onclick="RunAsync" disabled="@(_running || _connections.Count == 0)">
+            @(_running ? "Running…" : "Run")
+        </button>
+        @if (_markdown is not null)
+        {
+            <button @onclick="Copy">Copy markdown</button>
+            <button @onclick="Download">Download .md</button>
+        }
+        <button @onclick="Clear">Clear</button>
+        <span class="muted">@_copied</span>
+    </div>
+</div>
+
+@if (_markdown is not null)
+{
+    <h2>Result</h2>
+    <div class="rendered">@_rendered</div>
+}
+
+@code {
+    private List<DbConnectionEntry> _connections = [];
+    private string? _selected;
+    private string _sql = "";
+    private int _timeout = 60;
+    private bool _running;
+    private string? _markdown, _copied;
+    private MarkupString _rendered;
+
+    // Tables need the pipe-table extension; DisableHtml keeps any markup that came out of the
+    // database from executing in the browser.
+    private static readonly MarkdownPipeline Pipeline =
+        new MarkdownPipelineBuilder().UsePipeTables().DisableHtml().Build();
+
+    protected override void OnInitialized()
+    {
+        _connections = Store.Load();
+        _selected = _connections.FirstOrDefault()?.Name;
+    }
+
+    private async Task RunAsync()
+    {
+        var entry = _connections.FirstOrDefault(c => c.Name == _selected);
+        if (entry is null || string.IsNullOrWhiteSpace(_sql)) return;
+
+        (_running, _copied) = (true, null);
+        try
+        {
+            _markdown = await SqlRunner.RunAsMarkdownAsync(entry, _sql, _timeout);
+            // ponytail: DisableHtml escapes everything, so put back only the <br> we emit for
+            // multi-line cell values. A cell whose text is literally "<br>" renders as a break.
+            _rendered = (MarkupString)Markdown.ToHtml(_markdown, Pipeline).Replace("&lt;br&gt;", "<br>");
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private void Clear() => (_sql, _markdown, _rendered, _copied) = ("", null, default, null);
+
+    private async Task Copy()
+    {
+        await JS.InvokeVoidAsync("smr.copy", _markdown);
+        _copied = "Copied.";
+    }
+
+    private Task Download() =>
+        JS.InvokeVoidAsync("smr.download", $"sql-run-{DateTime.Now:yyyyMMdd-HHmmss}.md", _markdown).AsTask();
+}
