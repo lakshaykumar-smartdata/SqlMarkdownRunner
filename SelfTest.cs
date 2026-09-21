@@ -36,6 +36,23 @@ public static class SelfTest
         Debug.Assert(Risky("delete from a\nGO\ndelete from b") == 2);
         Debug.Assert(SqlRunner.StatementsMissingWhere("delete   from\n  t").Single() == "delete from t");
 
+        var noParams = SqlRunner.CallTemplate("P", "dbo.usp_Nightly", []);
+        Debug.Assert(noParams == "EXEC dbo.usp_Nightly");
+
+        var twoParams = SqlRunner.CallTemplate("P", "dbo.usp_Find", [
+            new SqlRunner.Param("@Id", "int", false),
+            new SqlRunner.Param("@Name", "nvarchar(50)", false)]);
+        // Every line but the last needs its comma BEFORE the comment, or the next line is commented out.
+        Debug.Assert(twoParams == "EXEC dbo.usp_Find\n    @Id = NULL,  -- int\n    @Name = NULL  -- nvarchar(50)");
+        Debug.Assert(!twoParams.TrimEnd().EndsWith(","));
+
+        var output = SqlRunner.CallTemplate("P", "dbo.usp_Out", [new SqlRunner.Param("@Total", "int", true)]);
+        Debug.Assert(output == "EXEC dbo.usp_Out\n    @Total = NULL OUTPUT  -- int");
+
+        Debug.Assert(SqlRunner.CallTemplate("U", "dbo.Staff", []) == "dbo.Staff");
+        Debug.Assert(SqlRunner.CallTemplate("TF", "dbo.fn_Rows", [new SqlRunner.Param("@a", "int", false)])
+            == "-- dbo.fn_Rows(@a int)\nSELECT * FROM dbo.fn_Rows(NULL)");
+
         Console.WriteLine("self-test: OK");
     }
 }

@@ -71,7 +71,7 @@
                     <div class="objects-kind">@group.Key <span class="muted">@group.Count()</span></div>
                     @foreach (var o in group)
                     {
-                        <div class="objects-item" draggable="true" data-drag="@o.Name" title="Drag into the editor">@o.Name</div>
+                        <div class="objects-item" draggable="true" data-drag="@o.DragText" title="@o.DragText">@o.Name</div>
                     }
                 </div>
             }

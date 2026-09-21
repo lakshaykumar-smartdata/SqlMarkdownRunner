@@ -6,7 +6,7 @@ using Microsoft.Data.SqlClient;
 
 namespace SqlMarkdownRunner;
 
-public record DbObject(string Kind, string Name);
+public record DbObject(string Kind, string Name, string DragText);
 
 public partial class SqlRunner
 {
@@ -189,11 +189,17 @@ public partial class SqlRunner
     public static async Task<List<DbObject>> ListObjectsAsync(DbConnectionEntry entry, CancellationToken ct = default)
     {
         const string sql = """
-            SELECT o.type, s.name AS schema_name, o.name
+            SELECT o.object_id, o.type, s.name AS schema_name, o.name
             FROM sys.objects o
             JOIN sys.schemas s ON s.schema_id = o.schema_id
             WHERE o.type IN ('U', 'V', 'P', 'FN', 'IF', 'TF') AND o.is_ms_shipped = 0
             ORDER BY s.name, o.name;
+
+            SELECT p.object_id, p.name, t.name AS type_name, p.max_length, p.precision, p.scale, p.is_output
+            FROM sys.parameters p
+            JOIN sys.types t ON t.user_type_id = p.user_type_id
+            WHERE p.parameter_id > 0
+            ORDER BY p.object_id, p.parameter_id;
             """;
 
         await using var conn = new SqlConnection(entry.ConnectionString);
@@ -202,14 +208,62 @@ public partial class SqlRunner
         await using var cmd = new SqlCommand(sql, conn) { CommandTimeout = 30 };
         await using var reader = await cmd.ExecuteReaderAsync(ct);
 
-        var objects = new List<DbObject>();
+        var rows = new List<(int Id, string Type, string Name)>();
         while (await reader.ReadAsync(ct))
-            objects.Add(new DbObject(Kind(reader.GetString(0)), $"{reader.GetString(1)}.{reader.GetString(2)}"));
+            rows.Add((reader.GetInt32(0), reader.GetString(1).TrimEnd(), $"{reader.GetString(2)}.{reader.GetString(3)}"));
 
-        return objects;
+        var parameters = new Dictionary<int, List<Param>>();
+        await reader.NextResultAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            var id = reader.GetInt32(0);
+            if (!parameters.TryGetValue(id, out var list)) parameters[id] = list = [];
+            list.Add(new Param(
+                reader.GetString(1),
+                FormatType(reader.GetString(2), reader.GetInt16(3), reader.GetByte(4), reader.GetByte(5)),
+                reader.GetBoolean(6)));
+        }
+
+        return rows
+            .Select(r => new DbObject(Kind(r.Type), r.Name, CallTemplate(r.Type, r.Name, parameters.GetValueOrDefault(r.Id, []))))
+            .ToList();
     }
 
-    private static string Kind(string type) => type.TrimEnd() switch
+    /// <summary>What dropping the name into the editor writes: a runnable call, parameters included.</summary>
+    internal static string CallTemplate(string type, string name, List<Param> parameters)
+    {
+        if (type is "U" or "V") return name;
+
+        var signature = string.Join(", ", parameters.Select(p => $"{p.Name} {p.Type}"));
+
+        if (type is "FN" or "IF" or "TF")
+        {
+            var call = type == "FN" ? $"SELECT {name}(" : $"SELECT * FROM {name}(";
+            var args = string.Join(", ", parameters.Select(_ => "NULL"));
+            return $"-- {name}({signature})\n{call}{args})";
+        }
+
+        if (parameters.Count == 0) return $"EXEC {name}";
+
+        // One parameter per line, NULL so it runs as-is once the values are filled in. The comma
+        // has to sit before the type comment, or the next line ends up commented out.
+        var assignments = parameters.Select((p, i) =>
+            $"    {p.Name} = NULL{(p.IsOutput ? " OUTPUT" : "")}{(i < parameters.Count - 1 ? "," : "")}  -- {p.Type}");
+
+        return $"EXEC {name}\n{string.Join("\n", assignments)}";
+    }
+
+    private static string FormatType(string type, short maxLength, byte precision, byte scale) => type switch
+    {
+        "varchar" or "char" or "varbinary" or "binary" => $"{type}({(maxLength == -1 ? "max" : maxLength.ToString())})",
+        "nvarchar" or "nchar" => $"{type}({(maxLength == -1 ? "max" : (maxLength / 2).ToString())})",
+        "decimal" or "numeric" => $"{type}({precision},{scale})",
+        _ => type
+    };
+
+    internal sealed record Param(string Name, string Type, bool IsOutput);
+
+    private static string Kind(string type) => type switch
     {
         "U" => "Tables",
         "V" => "Views",
