@@ -134,8 +134,15 @@ public partial class SqlRunner
             } while (await reader.NextResultAsync(ct));
 
             await reader.CloseAsync();
-            if (set == 0)
-                md.AppendLine($"**{Math.Max(reader.RecordsAffected, 0)} row(s) affected.**");
+
+            // Cumulative across the batch, and -1 when nothing was modified. Report it even when
+            // the batch also returned rows, otherwise a write loop that ends in a SELECT looks idle.
+            var affected = reader.RecordsAffected;
+            if (set == 0 || affected > 0)
+            {
+                md.AppendLine();   // a line butted against the table rows breaks the table
+                md.AppendLine($"**{Math.Max(affected, 0):N0} row(s) affected.**");
+            }
         }
         catch (SqlException ex)
         {
