@@ -4,7 +4,7 @@ Blazor Server app: manage MS SQL connection strings, run SQL (GO batches support
 get the query + results back as one markdown document to copy or download into an LLM.
 
 - **Connections** page → saved to `connections.json` in this folder (hand-editable, gitignored).
-- **Run SQL** page → pick a connection, run, copy/download the markdown.
+- **Run SQL** page → pick a connection, run, copy/download the markdown. The side panel lists the database's tables, views, procedures and functions; drag a name into the editor.
 - **History** page → the last 200 runs per connection, saved to `history.json` (also gitignored). Open reloads a query into the editor.
 
 ```bash

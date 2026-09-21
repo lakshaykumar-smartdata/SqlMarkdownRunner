@@ -6,6 +6,8 @@ using Microsoft.Data.SqlClient;
 
 namespace SqlMarkdownRunner;
 
+public record DbObject(string Kind, string Name);
+
 public partial class SqlRunner
 {
     // ponytail: line-level GO split; a literal "GO" alone on a line inside a string/block comment
@@ -182,6 +184,38 @@ public partial class SqlRunner
 
     private static string Escape(string s) =>
         s.Replace("|", @"\|").Replace("\r\n", "<br>").Replace("\n", "<br>").Replace("\r", "<br>");
+
+    /// <summary>Tables, views, procedures and functions in the database, for the object panel.</summary>
+    public static async Task<List<DbObject>> ListObjectsAsync(DbConnectionEntry entry, CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT o.type, s.name AS schema_name, o.name
+            FROM sys.objects o
+            JOIN sys.schemas s ON s.schema_id = o.schema_id
+            WHERE o.type IN ('U', 'V', 'P', 'FN', 'IF', 'TF') AND o.is_ms_shipped = 0
+            ORDER BY s.name, o.name;
+            """;
+
+        await using var conn = new SqlConnection(entry.ConnectionString);
+        await conn.OpenAsync(ct);
+
+        await using var cmd = new SqlCommand(sql, conn) { CommandTimeout = 30 };
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+        var objects = new List<DbObject>();
+        while (await reader.ReadAsync(ct))
+            objects.Add(new DbObject(Kind(reader.GetString(0)), $"{reader.GetString(1)}.{reader.GetString(2)}"));
+
+        return objects;
+    }
+
+    private static string Kind(string type) => type.TrimEnd() switch
+    {
+        "U" => "Tables",
+        "V" => "Views",
+        "P" => "Stored procedures",
+        _ => "Functions"
+    };
 
     /// <summary>Server/database only — never echo credentials into a document meant for pasting.</summary>
     public static string Describe(string connectionString)
