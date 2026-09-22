@@ -81,9 +81,14 @@
                             <details>
                                 <summary class="objects-item" draggable="true" data-drag="@o.DragText" title="@o.DragText">@o.Name</summary>
                                 <div class="objects-cols">
-                                    <button class="copy-schema" @onclick="() => CopySchemaAsync(o)">
-                                        @(_schemaCopied == o.Name ? "Copied" : "Copy schema")
-                                    </button>
+                                    <div class="objects-actions">
+                                        <button class="copy-schema" @onclick="() => CopySchemaAsync(o)">
+                                            @(_copiedKey == $"{o.Name}:schema" ? "Copied" : "Schema")
+                                        </button>
+                                        <button class="copy-schema" @onclick="() => CopySelectAsync(o)">
+                                            @(_copiedKey == $"{o.Name}:select" ? "Copied" : "SELECT")
+                                        </button>
+                                    </div>
                                     @foreach (var col in o.Columns)
                                     {
                                         <div class="objects-col" draggable="true" data-drag="@col.Name">
@@ -128,7 +133,7 @@
     private string _objectFilter = "";
     private string? _objectError;
     private DateTime? _fetchedAt;
-    private string? _schemaCopied;
+    private string? _copiedKey;
     private bool _loadingObjects;
 
     private IEnumerable<DbObject> Filtered => _objectFilter == ""
@@ -236,7 +241,15 @@
                      + string.Join("\n", rows);
 
         await JS.InvokeVoidAsync("smr.copy", schema);
-        _schemaCopied = o.Name;
+        _copiedKey = $"{o.Name}:schema";
+    }
+
+    /// <summary>A SELECT that names every column, rather than SELECT *.</summary>
+    private async Task CopySelectAsync(DbObject o)
+    {
+        var columns = string.Join(",\n", o.Columns.Select(c => $"    {c.Name}"));
+        await JS.InvokeVoidAsync("smr.copy", $"SELECT\n{columns}\nFROM {o.Name};");
+        _copiedKey = $"{o.Name}:select";
     }
 
     private async Task Copy()
