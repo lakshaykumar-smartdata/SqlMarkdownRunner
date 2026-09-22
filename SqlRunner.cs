@@ -6,7 +6,7 @@ using Microsoft.Data.SqlClient;
 
 namespace SqlMarkdownRunner;
 
-public record DbColumn(string Name, string Type);
+public record DbColumn(string Name, string Type, bool Nullable, bool IsPrimaryKey);
 
 public record DbObject(string Kind, string Name, string DragText, List<DbColumn> Columns);
 
@@ -210,10 +210,18 @@ public partial class SqlRunner
             WHERE p.parameter_id > 0
             ORDER BY p.object_id, p.parameter_id;
 
-            SELECT c.object_id, c.name, t.name AS type_name, c.max_length, c.precision, c.scale
+            SELECT c.object_id, c.name, t.name AS type_name, c.max_length, c.precision, c.scale,
+                   c.is_nullable,
+                   CAST(CASE WHEN pk.column_id IS NULL THEN 0 ELSE 1 END AS bit) AS is_primary_key
             FROM sys.columns c
             JOIN sys.objects o ON o.object_id = c.object_id
             JOIN sys.types t ON t.user_type_id = c.user_type_id
+            LEFT JOIN (
+                SELECT ic.object_id, ic.column_id
+                FROM sys.index_columns ic
+                JOIN sys.indexes i ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+                WHERE i.is_primary_key = 1
+            ) pk ON pk.object_id = c.object_id AND pk.column_id = c.column_id
             WHERE o.type IN ('U', 'V') AND o.is_ms_shipped = 0
             ORDER BY c.object_id, c.column_id;
             """;
@@ -248,7 +256,9 @@ public partial class SqlRunner
             if (!columns.TryGetValue(id, out var list)) columns[id] = list = [];
             list.Add(new DbColumn(
                 reader.GetString(1),
-                FormatType(reader.GetString(2), reader.GetInt16(3), reader.GetByte(4), reader.GetByte(5))));
+                FormatType(reader.GetString(2), reader.GetInt16(3), reader.GetByte(4), reader.GetByte(5)),
+                reader.GetBoolean(6),
+                reader.GetBoolean(7)));
         }
 
         return rows

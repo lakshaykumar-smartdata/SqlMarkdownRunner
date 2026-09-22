@@ -236,8 +236,10 @@
     /// <summary>Column names and types as a markdown table, ready to paste into an LLM.</summary>
     private async Task CopySchemaAsync(DbObject o)
     {
-        var rows = o.Columns.Select(c => $"| {c.Name} | {c.Type} |");
-        var schema = $"### {o.Name}\n\n| column | type |\n| --- | --- |\n"
+        var rows = o.Columns.Select(c =>
+            $"| {c.Name} | {c.Type} | {(c.Nullable ? "NULL" : "NOT NULL")} | {(c.IsPrimaryKey ? "PK" : "")} |");
+
+        var schema = $"### {o.Name}\n\n| column | type | null | key |\n| --- | --- | --- | --- |\n"
                      + string.Join("\n", rows);
 
         await JS.InvokeVoidAsync("smr.copy", schema);
