@@ -264,3 +264,6 @@ pre.sql { margin: 0; max-height: 8rem; overflow: auto; white-space: pre-wrap; fo
 .objects-col { display: flex; justify-content: space-between; gap: .6rem; font-family: "Cascadia Mono", Consolas, monospace; font-size: .73rem; padding: .12rem .35rem; border-radius: 4px; cursor: grab; }
 .objects-col:hover { background: var(--accent-wash); }
 .objects-col .muted { font-size: .68rem; white-space: nowrap; }
+
+.copy-schema { width: 100%; margin: .2rem 0 .3rem; padding: .18rem .4rem; font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: #fbfbfc; box-shadow: none; }
+.copy-schema:hover:not(:disabled) { color: var(--accent-dark); border-color: var(--accent); background: var(--accent-wash); }

@@ -81,6 +81,9 @@
                             <details>
                                 <summary class="objects-item" draggable="true" data-drag="@o.DragText" title="@o.DragText">@o.Name</summary>
                                 <div class="objects-cols">
+                                    <button class="copy-schema" @onclick="() => CopySchemaAsync(o)">
+                                        @(_schemaCopied == o.Name ? "Copied" : "Copy schema")
+                                    </button>
                                     @foreach (var col in o.Columns)
                                     {
                                         <div class="objects-col" draggable="true" data-drag="@col.Name">
@@ -125,6 +128,7 @@
     private string _objectFilter = "";
     private string? _objectError;
     private DateTime? _fetchedAt;
+    private string? _schemaCopied;
     private bool _loadingObjects;
 
     private IEnumerable<DbObject> Filtered => _objectFilter == ""
@@ -223,6 +227,17 @@
     }
 
     private void Clear() => (_sql, _markdown, _rendered, _copied) = ("", null, default, null);
+
+    /// <summary>Column names and types as a markdown table, ready to paste into an LLM.</summary>
+    private async Task CopySchemaAsync(DbObject o)
+    {
+        var rows = o.Columns.Select(c => $"| {c.Name} | {c.Type} |");
+        var schema = $"### {o.Name}\n\n| column | type |\n| --- | --- |\n"
+                     + string.Join("\n", rows);
+
+        await JS.InvokeVoidAsync("smr.copy", schema);
+        _schemaCopied = o.Name;
+    }
 
     private async Task Copy()
     {
