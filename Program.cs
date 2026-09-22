@@ -8,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddSingleton<ConnectionStore>();
 builder.Services.AddSingleton<HistoryStore>();
+builder.Services.AddSingleton<ObjectCache>();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
