@@ -244,11 +244,11 @@
         _copiedKey = $"{o.Name}:schema";
     }
 
-    /// <summary>A SELECT that names every column, rather than SELECT *.</summary>
+    /// <summary>A SELECT that names every column, capped like SSMS so a wide table cannot flood.</summary>
     private async Task CopySelectAsync(DbObject o)
     {
         var columns = string.Join(",\n", o.Columns.Select(c => $"    {c.Name}"));
-        await JS.InvokeVoidAsync("smr.copy", $"SELECT\n{columns}\nFROM {o.Name};");
+        await JS.InvokeVoidAsync("smr.copy", $"SELECT TOP 100\n{columns}\nFROM {o.Name};");
         _copiedKey = $"{o.Name}:select";
     }
 
