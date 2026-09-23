@@ -3,3 +3,4 @@ obj/
 connections.json
 history.json
 objects.json
+wwwroot/sql-queries/

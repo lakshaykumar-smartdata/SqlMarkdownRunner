@@ -9,6 +9,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<ConnectionStore>();
 builder.Services.AddSingleton<HistoryStore>();
 builder.Services.AddSingleton<ObjectCache>();
+builder.Services.AddSingleton<SavedRuns>();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 

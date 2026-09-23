@@ -1,0 +1,92 @@
+@page "/saved"
+@inject SavedRuns Runs
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+
+<PageTitle>Saved runs</PageTitle>
+
+<h1>Saved runs</h1>
+<p class="muted">Auto-saved markdown, stored under <code>@Runs.Root</code>.</p>
+
+@if (_connections.Count == 0)
+{
+    <p class="muted">Nothing saved yet — run a query with auto-save ticked.</p>
+}
+else
+{
+    <div class="form">
+        <div class="row">
+            <label>Connection
+                <select @bind="_connection" @bind:after="Reload">
+                    @foreach (var name in _connections)
+                    {
+                        <option value="@name">@name</option>
+                    }
+                </select>
+            </label>
+            <span class="muted">@_files.Count file(s)</span>
+        </div>
+    </div>
+
+    <table class="grid">
+        <thead>
+            <tr><th>File</th><th style="width:11rem">Saved at</th><th style="width:6rem">Size</th><th style="width:1%"></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var f in _files)
+            {
+                <tr class="@(f.FileName == _openFile ? "open" : null)">
+                    <td><code>@f.FileName</code></td>
+                    <td class="nowrap">@f.SavedAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                    <td class="nowrap">@($"{f.Bytes / 1024.0:N1} KB")</td>
+                    <td><button @onclick="() => Open(f)">Open</button></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (_markdown is not null)
+{
+    <h2>@_openFile</h2>
+    <div class="row" style="margin-bottom:.75rem">
+        <button @onclick="CopyAsync">Copy markdown</button>
+        <button @onclick="DownloadAsync">Download .md</button>
+        <span class="muted">@_status</span>
+    </div>
+    <div class="rendered">@MarkdownView.Render(_markdown)</div>
+}
+
+@code {
+    private List<string> _connections = [];
+    private List<SavedRun> _files = [];
+    private string? _connection, _openFile, _markdown, _status;
+
+    protected override void OnInitialized()
+    {
+        _connections = Runs.Connections();
+        _connection = _connections.FirstOrDefault();
+        Reload();
+    }
+
+    private void Reload()
+    {
+        _files = _connection is null ? [] : Runs.List(_connection);
+        (_openFile, _markdown, _status) = (null, null, null);
+    }
+
+    private void Open(SavedRun f)
+    {
+        (_openFile, _status) = (f.FileName, null);
+        _markdown = Runs.Read(_connection!, f.FileName) ?? "_File is gone from disk._";
+    }
+
+    private async Task CopyAsync()
+    {
+        await JS.InvokeVoidAsync("smr.copy", _markdown);
+        _status = "Copied.";
+    }
+
+    private Task DownloadAsync() =>
+        JS.InvokeVoidAsync("smr.download", _openFile, _markdown).AsTask();
+}

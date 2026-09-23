@@ -128,6 +128,7 @@ code { background: var(--accent-wash); color: var(--accent-dark); padding: .1rem
 .form > label, fieldset label { display: flex; flex-direction: column; gap: .3rem; font-weight: 600; font-size: .78rem; color: var(--ink-soft); letter-spacing: .01em; }
 .row { display: flex; gap: .85rem; align-items: flex-end; flex-wrap: wrap; }
 .row > label { flex: 1 1 12rem; }
+.row > label.narrow { flex: 0 0 auto; }   /* a short field should not stretch the row */
 
 /* controls */
 input, textarea, select {
