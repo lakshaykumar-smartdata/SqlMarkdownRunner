@@ -9,6 +9,11 @@
 <h1>Saved runs</h1>
 <p class="muted">Auto-saved markdown, stored under <code>@Runs.Root</code>.</p>
 
+@if (_status is not null)
+{
+    <p class="ok">@_status</p>
+}
+
 @if (_files.Count == 0)
 {
     <p class="muted">Nothing saved yet for this connection — run a query with auto-save ticked.</p>
@@ -26,7 +31,10 @@ else
                     <td><code>@f.FileName</code></td>
                     <td class="nowrap">@f.SavedAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
                     <td class="nowrap">@($"{f.Bytes / 1024.0:N1} KB")</td>
-                    <td><button @onclick="() => Open(f)">Open</button></td>
+                    <td class="nowrap">
+                        <button @onclick="() => Open(f)">Open</button>
+                        <button @onclick="() => DeleteAsync(f)">Delete</button>
+                    </td>
                 </tr>
             }
         </tbody>
@@ -72,6 +80,15 @@ else
     {
         (_openFile, _status) = (f.FileName, null);
         _markdown = Runs.Read(Session.Name!, f.FileName) ?? "_File is gone from disk._";
+    }
+
+    private async Task DeleteAsync(SavedRun f)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"Delete {f.FileName}?")) return;
+
+        Runs.Delete(Session.Name!, f.FileName);
+        Reload();   // also closes the preview if that was the open file
+        _status = $"Deleted {f.FileName}.";
     }
 
     private async Task CopyAsync()

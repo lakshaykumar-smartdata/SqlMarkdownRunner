@@ -43,5 +43,11 @@ public class SavedRuns(IWebHostEnvironment env)
         return File.Exists(path) ? File.ReadAllText(path) : null;
     }
 
+    public void Delete(string connection, string fileName)
+    {
+        var path = Path.Combine(Root, Safe(connection), Path.GetFileName(fileName));
+        if (File.Exists(path)) File.Delete(path);
+    }
+
     private static string Safe(string name) => string.Join("_", name.Split(Path.GetInvalidFileNameChars()));
 }
