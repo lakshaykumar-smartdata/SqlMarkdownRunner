@@ -10,6 +10,7 @@ builder.Services.AddSingleton<ConnectionStore>();
 builder.Services.AddSingleton<HistoryStore>();
 builder.Services.AddSingleton<ObjectCache>();
 builder.Services.AddSingleton<SavedRuns>();
+builder.Services.AddScoped<Session>();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 

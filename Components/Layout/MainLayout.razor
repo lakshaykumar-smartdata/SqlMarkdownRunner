@@ -1,4 +1,6 @@
 @inherits LayoutComponentBase
+@implements IDisposable
+@inject Session Session
 
 <nav class="topnav">
     <span class="brand">SQL <span>→</span> markdown</span>
@@ -6,6 +8,22 @@
     <NavLink href="history">History</NavLink>
     <NavLink href="saved">Saved runs</NavLink>
     <NavLink href="settings">Connections</NavLink>
+
+    <div class="topnav-connection">
+        @if (Session.Connections.Count == 0)
+        {
+            <a href="settings" class="no-connection">Add a connection</a>
+        }
+        else
+        {
+            <select @bind="Session.Name" title="Everything below runs against this connection">
+                @foreach (var c in Session.Connections)
+                {
+                    <option value="@c.Name">@c.Name</option>
+                }
+            </select>
+        }
+    </div>
 </nav>
 
 <main>
@@ -17,3 +35,11 @@
     <a href="." class="reload">Reload</a>
     <span class="dismiss">🗙</span>
 </div>
+
+@code {
+    protected override void OnInitialized() => Session.Changed += Refresh;
+
+    public void Dispose() => Session.Changed -= Refresh;
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+}

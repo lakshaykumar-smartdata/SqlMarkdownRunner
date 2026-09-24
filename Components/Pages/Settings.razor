@@ -1,7 +1,7 @@
 @page "/settings"
 @using Microsoft.Data.SqlClient
 @inject ConnectionStore Store
-@rendermode InteractiveServer
+@inject Session Session
 
 <PageTitle>Connections</PageTitle>
 
@@ -112,6 +112,7 @@
     {
         _connections.RemoveAll(x => x.Name == c.Name);
         Store.Save(_connections);
+        Session.Reload();
         if (_editingOriginal == c.Name) ClearForm();
     }
 
@@ -133,6 +134,7 @@
         if (index >= 0) _connections[index] = entry; else _connections.Add(entry);
 
         Store.Save(_connections);
+        Session.Reload();
         ClearForm();
         _status = "OK — saved.";
     }

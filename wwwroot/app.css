@@ -269,3 +269,20 @@ pre.sql { margin: 0; max-height: 8rem; overflow: auto; white-space: pre-wrap; fo
 .objects-actions { display: flex; gap: .3rem; margin: .2rem 0 .35rem; }
 .copy-schema { flex: 1; margin: 0; padding: .18rem .4rem; font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: #fbfbfc; box-shadow: none; }
 .copy-schema:hover:not(:disabled) { color: var(--accent-dark); border-color: var(--accent); background: var(--accent-wash); }
+
+/* the connection every page follows, pinned to the header */
+.topnav-connection { margin-left: auto; display: flex; align-items: center; gap: .5rem; }
+.topnav-connection select {
+    width: auto;
+    min-width: 13rem;
+    padding: .28rem .5rem;
+    font-size: .8rem;
+    font-weight: 600;
+    color: #fff;
+    background: rgba(255, 255, 255, .1);
+    border-color: rgba(255, 255, 255, .22);
+}
+.topnav-connection select:hover { background: rgba(255, 255, 255, .16); border-color: rgba(255, 255, 255, .35); }
+.topnav-connection select:focus { box-shadow: 0 0 0 3px rgba(122, 162, 247, .3); border-color: #7aa2f7; }
+.topnav-connection select option { color: var(--ink); background: #fff; }
+.topnav-connection .no-connection { color: #fca5a5; font-size: .8rem; font-weight: 600; }
