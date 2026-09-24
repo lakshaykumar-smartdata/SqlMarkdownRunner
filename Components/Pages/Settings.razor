@@ -10,7 +10,7 @@
 
 <table class="grid">
     <thead>
-        <tr><th>Name</th><th>Server / database</th><th style="width:1%"></th></tr>
+        <tr><th>Name</th><th>Server / database</th><th style="width:6rem">Timeout</th><th style="width:7rem">Auto-save</th><th style="width:1%"></th></tr>
     </thead>
     <tbody>
         @foreach (var c in _connections)
@@ -18,6 +18,8 @@
             <tr>
                 <td>@c.Name</td>
                 <td><code>@SqlRunner.Describe(c.ConnectionString)</code></td>
+                <td class="nowrap">@c.TimeoutSeconds s</td>
+                <td class="nowrap">@(c.AutoSaveMarkdown ? "on" : "off")</td>
                 <td class="nowrap">
                     <button @onclick="() => Edit(c)">Edit</button>
                     <button @onclick="() => Delete(c)">Delete</button>
@@ -26,7 +28,7 @@
         }
         @if (_connections.Count == 0)
         {
-            <tr><td colspan="3" class="muted">No connections yet.</td></tr>
+            <tr><td colspan="5" class="muted">No connections yet.</td></tr>
         }
     </tbody>
 </table>
@@ -58,6 +60,15 @@
     </fieldset>
 
     <div class="row">
+        <label class="narrow">Query timeout (s)
+            <input type="number" min="1" max="3600" @bind="_timeout" style="width:7rem" />
+        </label>
+        <label class="check" title="Write every run to wwwroot/sql-queries/&lt;connection&gt;/">
+            <input type="checkbox" @bind="_autoSave" /> Auto-save markdown of every run
+        </label>
+    </div>
+
+    <div class="row">
         <button class="primary" @onclick="Save">Save</button>
         <button @onclick="TestAsync" disabled="@_testing">Test</button>
         <button @onclick="ClearForm">@(_editingOriginal is null ? "Clear" : "Cancel")</button>
@@ -70,6 +81,8 @@
     private SqlConnectionStringBuilder _builder = new();
     private string _name = "", _connectionString = "", _status = "";
     private string? _editingOriginal;
+    private int _timeout = 60;
+    private bool _autoSave = true;
     private bool _testing;
 
     protected override void OnInitialized() => _connections = Store.Load();
@@ -105,6 +118,7 @@
     private void Edit(DbConnectionEntry c)
     {
         (_editingOriginal, _name, _status) = (c.Name, c.Name, "");
+        (_timeout, _autoSave) = (c.TimeoutSeconds, c.AutoSaveMarkdown);
         ConnectionString = c.ConnectionString;
     }
 
@@ -129,7 +143,7 @@
             return;
         }
 
-        var entry = new DbConnectionEntry(_name.Trim(), _connectionString.Trim());
+        var entry = new DbConnectionEntry(_name.Trim(), _connectionString.Trim(), _timeout, _autoSave);
         var index = _editingOriginal is null ? -1 : _connections.FindIndex(c => c.Name == _editingOriginal);
         if (index >= 0) _connections[index] = entry; else _connections.Add(entry);
 
@@ -161,6 +175,7 @@
     private void ClearForm()
     {
         (_editingOriginal, _name, _connectionString, _status) = (null, "", "", "");
+        (_timeout, _autoSave) = (60, true);
         _builder = new SqlConnectionStringBuilder();
     }
 }

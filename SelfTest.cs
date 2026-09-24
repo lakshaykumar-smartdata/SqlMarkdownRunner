@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace SqlMarkdownRunner;
 
@@ -52,6 +53,13 @@ public static class SelfTest
         Debug.Assert(SqlRunner.CallTemplate("U", "dbo.Staff", []) == "dbo.Staff");
         Debug.Assert(SqlRunner.CallTemplate("TF", "dbo.fn_Rows", [new SqlRunner.Param("@a", "int", false)])
             == "-- dbo.fn_Rows(@a int)\nSELECT * FROM dbo.fn_Rows(NULL)");
+
+        // An existing connections.json predates the timeout and auto-save fields, so the
+        // record defaults have to survive deserialisation rather than coming back as 0/false.
+        var legacy = JsonSerializer.Deserialize<DbConnectionEntry>(
+            """{"Name":"a","ConnectionString":"b"}""")!;
+        Debug.Assert(legacy.TimeoutSeconds == 60, "timeout default lost on deserialise");
+        Debug.Assert(legacy.AutoSaveMarkdown, "auto-save default lost on deserialise");
 
         Console.WriteLine("self-test: OK");
     }

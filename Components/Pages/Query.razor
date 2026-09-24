@@ -17,12 +17,6 @@
 
 <div class="workspace">
     <div class="form">
-        <div class="row">
-            <label class="narrow">Timeout (s)<input type="number" min="1" max="3600" @bind="_timeout" style="width:6rem" /></label>
-            <label class="check" title="Write the markdown under wwwroot/sql-queries/&lt;connection&gt;/">
-                <input type="checkbox" @bind="_autoSave" /> Auto-save markdown
-            </label>
-        </div>
         <label><span>SQL — <code>GO</code> batch separators supported</span>
             <textarea @bind="_sql" rows="16" spellcheck="false" class="mono"
                       placeholder="SELECT TOP 10 * FROM sys.tables;"></textarea>
@@ -117,8 +111,6 @@
 
 @code {
     private string _sql = "";
-    private int _timeout = 60;
-    private bool _autoSave = true;
     private bool _running;
     private string? _markdown, _copied;
     private MarkupString _rendered;
@@ -196,7 +188,7 @@
         (_running, _copied) = (true, null);
         try
         {
-            _markdown = await SqlRunner.RunAsMarkdownAsync(entry, _sql, _timeout);
+            _markdown = await SqlRunner.RunAsMarkdownAsync(entry, _sql, entry.TimeoutSeconds);
             _rendered = MarkdownView.Render(_markdown);
         }
         finally
@@ -205,7 +197,7 @@
         }
 
         History.Add(entry.Name, _sql);
-        if (_autoSave && _markdown is not null) Runs.Save(entry.Name, _markdown);
+        if (entry.AutoSaveMarkdown && _markdown is not null) Runs.Save(entry.Name, _markdown);
     }
 
     /// <summary>An UPDATE or DELETE with no WHERE hits every row, so make the user say yes first.</summary>

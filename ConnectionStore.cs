@@ -2,7 +2,11 @@ using System.Text.Json;
 
 namespace SqlMarkdownRunner;
 
-public record DbConnectionEntry(string Name, string ConnectionString);
+public record DbConnectionEntry(
+    string Name,
+    string ConnectionString,
+    int TimeoutSeconds = 60,
+    bool AutoSaveMarkdown = true);
 
 /// <summary>Connections persisted as a plain JSON file next to the app, hand-editable.</summary>
 public class ConnectionStore(IWebHostEnvironment env)
