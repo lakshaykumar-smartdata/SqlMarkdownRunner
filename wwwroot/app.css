@@ -11,7 +11,15 @@
 }
 
 /* MudTextField puts the class on the control root, so target the field itself. */
-pre, code, .mono textarea, .mono input { font-family: "Cascadia Mono", Consolas, "Courier New", monospace; }
+pre, code { font-family: "Cascadia Mono", Consolas, "Courier New", monospace; }
+
+/* MudBlazor styles the field itself, so the selector has to be at least as specific. */
+.mono .mud-input textarea,
+.mono .mud-input input {
+    font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
+    font-size: .8125rem;
+    line-height: 1.6;
+}
 .muted { color: var(--muted); }
 .err { color: var(--err); }
 .nowrap { white-space: nowrap; }
