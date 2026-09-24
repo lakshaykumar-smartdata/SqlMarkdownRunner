@@ -1,6 +1,6 @@
 # SqlMarkdownRunner
 
-Blazor Server app: manage MS SQL connection strings, run SQL (GO batches supported),
+Blazor Server app (MudBlazor UI): manage MS SQL connection strings, run SQL (GO batches supported),
 get the query + results back as one markdown document to copy or download into an LLM.
 
 The connection is picked once in the header; Run SQL, History and Saved runs all follow it.

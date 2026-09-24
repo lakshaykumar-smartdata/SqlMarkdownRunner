@@ -5,128 +5,157 @@
 @inject ObjectCache Cache
 @inject SavedRuns Runs
 @inject IJSRuntime JS
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
 
 <PageTitle>SQL to markdown</PageTitle>
 
-<h1>Run SQL</h1>
+<MudText Typo="Typo.h5" Class="mb-4">Run SQL</MudText>
 
 @if (Session.Current is null)
 {
-    <p class="err">No connections yet — <a href="settings">add one first</a>.</p>
+    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="mb-4">
+        No connections yet — <MudLink Href="settings">add one first</MudLink>.
+    </MudAlert>
 }
 
-<div class="workspace">
-    <div class="form">
-        <label><span>SQL — <code>GO</code> batch separators supported</span>
-            <textarea @bind="_sql" rows="16" spellcheck="false" class="mono"
-                      placeholder="SELECT TOP 10 * FROM sys.tables;"></textarea>
-        </label>
-        <div class="row">
-            <button class="primary" @onclick="RunAsync" disabled="@(_running || Session.Current is null)">
-                @(_running ? "Running…" : "Run")
-            </button>
-            @if (_markdown is not null)
+<MudGrid Spacing="3">
+    <MudItem xs="12" lg="8">
+        <MudPaper Elevation="0" Outlined="true" Class="pa-4">
+            <MudTextField @bind-Value="_sql" T="string" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Lines="18" Class="mono" Label="SQL"
+                          HelperText="GO batch separators supported. Drag a name from the panel to insert it."
+                          Placeholder="SELECT TOP 10 * FROM sys.tables;" />
+
+            <MudStack Row="true" Spacing="2" Class="mt-4" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RunAsync"
+                           Disabled="@(_running || Session.Current is null)"
+                           StartIcon="@Icons.Material.Filled.PlayArrow">
+                    @(_running ? "Running…" : "Run")
+                </MudButton>
+                @if (_markdown is not null)
+                {
+                    <MudButton Variant="Variant.Outlined" OnClick="Copy"
+                               StartIcon="@Icons.Material.Outlined.ContentCopy">Copy markdown</MudButton>
+                    <MudButton Variant="Variant.Outlined" OnClick="Download"
+                               StartIcon="@Icons.Material.Outlined.Download">Download .md</MudButton>
+                }
+                <MudButton Variant="Variant.Text" OnClick="Clear">Clear</MudButton>
+                <MudSpacer />
+                @if (Session.Current is { } c)
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                        timeout @c.TimeoutSeconds s · auto-save @(c.AutoSaveMarkdown ? "on" : "off")
+                    </MudText>
+                }
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" lg="4">
+        <MudPaper Elevation="0" Outlined="true" Class="pa-4 objects">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+                <MudText Typo="Typo.subtitle2">Database objects</MudText>
+                <MudSpacer />
+                @if (_fetchedAt is not null)
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">@_fetchedAt.Value.ToString("MMM d, HH:mm")</MudText>
+                }
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="LoadObjectsAsync"
+                           Disabled="@(_loadingObjects || Session.Current is null)">
+                    @(_loadingObjects ? "Loading…" : _objects.Count == 0 ? "Load" : "Refresh")
+                </MudButton>
+            </MudStack>
+
+            @if (_objectError is not null)
             {
-                <button @onclick="Copy">Copy markdown</button>
-                <button @onclick="Download">Download .md</button>
+                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Dense="true">@_objectError</MudAlert>
             }
-            <button @onclick="Clear">Clear</button>
-            <span class="muted">@_copied</span>
-        </div>
-    </div>
-
-    <aside class="objects">
-        <div class="objects-head">
-            <strong>Database objects</strong>
-            @if (_fetchedAt is not null)
+            else if (_objects.Count == 0)
             {
-                <span class="muted" title="Refresh to re-read the schema">@_fetchedAt.Value.ToString("MMM d, HH:mm")</span>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                    Load this database's tables, views, procedures and functions, then drag a name into the editor.
+                </MudText>
             }
-            <button @onclick="LoadObjectsAsync" disabled="@(_loadingObjects || Session.Current is null)">
-                @(_loadingObjects ? "Loading…" : _objects.Count == 0 ? "Load" : "Refresh")
-            </button>
-        </div>
-
-        @if (_objectError is not null)
-        {
-            <p class="err">@_objectError</p>
-        }
-        else if (_objects.Count == 0)
-        {
-            <p class="muted">Load the tables, views, procedures and functions in this database, then drag a name into the editor.</p>
-        }
-        else
-        {
-            <input placeholder="Filter @_objects.Count objects" @bind="_objectFilter" @bind:event="oninput" />
-
-            @foreach (var group in Filtered.GroupBy(o => o.Kind))
+            else
             {
-                <div class="objects-group">
-                    <div class="objects-kind">@group.Key <span class="muted">@group.Count()</span></div>
-                    @foreach (var o in group)
+                <MudTextField @bind-Value="_objectFilter" T="string" Immediate="true" Clearable="true"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
+                              Placeholder="@($"Filter {_objects.Count} objects")" />
+
+                <div class="objects-scroll">
+                    @foreach (var group in Filtered.GroupBy(o => o.Kind))
                     {
-                        @if (o.Columns.Count > 0)
-                        {
-                            <details>
-                                <summary class="objects-item" draggable="true" data-drag="@o.DragText" title="@o.DragText">@o.Name</summary>
-                                <div class="objects-cols">
-                                    <div class="objects-actions">
-                                        <button class="copy-schema" @onclick="() => CopySchemaAsync(o)">
-                                            @(_copiedKey == $"{o.Name}:schema" ? "Copied" : "Schema")
-                                        </button>
-                                        <button class="copy-schema" @onclick="() => CopySelectAsync(o)">
-                                            @(_copiedKey == $"{o.Name}:select" ? "Copied" : "SELECT")
-                                        </button>
-                                    </div>
-                                    @foreach (var col in o.Columns)
-                                    {
-                                        <div class="objects-col" draggable="true" data-drag="@col.Name">
-                                            <span>@col.Name</span><span class="muted">@col.Type</span>
+                        <div class="objects-group">
+                            <div class="objects-kind">@group.Key <span class="muted">@group.Count()</span></div>
+                            @foreach (var o in group)
+                            {
+                                @if (o.Columns.Count > 0)
+                                {
+                                    <details>
+                                        <summary class="objects-item" draggable="true" data-drag="@o.DragText" title="@o.DragText">@o.Name</summary>
+                                        <div class="objects-cols">
+                                            <div class="objects-actions">
+                                                <button class="copy-schema" @onclick="() => CopySchemaAsync(o)">
+                                                    @(_copiedKey == $"{o.Name}:schema" ? "Copied" : "Schema")
+                                                </button>
+                                                <button class="copy-schema" @onclick="() => CopySelectAsync(o)">
+                                                    @(_copiedKey == $"{o.Name}:select" ? "Copied" : "SELECT")
+                                                </button>
+                                            </div>
+                                            @foreach (var col in o.Columns)
+                                            {
+                                                <div class="objects-col" draggable="true" data-drag="@col.Name">
+                                                    <span>@col.Name</span><span class="muted">@col.Type</span>
+                                                </div>
+                                            }
                                         </div>
-                                    }
-                                </div>
-                            </details>
-                        }
-                        else
-                        {
-                            <div class="objects-item" draggable="true" data-drag="@o.DragText" title="@o.DragText">@o.Name</div>
-                        }
+                                    </details>
+                                }
+                                else
+                                {
+                                    <div class="objects-item" draggable="true" data-drag="@o.DragText" title="@o.DragText">@o.Name</div>
+                                }
+                            }
+                        </div>
+                    }
+
+                    @if (!Filtered.Any())
+                    {
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary">Nothing matches that filter.</MudText>
                     }
                 </div>
             }
-
-            @if (!Filtered.Any())
-            {
-                <p class="muted">Nothing matches “@_objectFilter”.</p>
-            }
-        }
-    </aside>
-</div>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
 
 @if (_markdown is not null)
 {
-    <h2>Result</h2>
-    <div class="rendered">@_rendered</div>
+    <MudText Typo="Typo.h6" Class="mt-8 mb-3">Result</MudText>
+    <MudPaper Elevation="0" Outlined="true" Class="pa-6">
+        <div class="rendered">@_rendered</div>
+    </MudPaper>
 }
 
 @code {
     private string _sql = "";
     private bool _running;
-    private string? _markdown, _copied;
+    private string? _markdown;
     private MarkupString _rendered;
 
     private List<DbObject> _objects = [];
     private string _objectFilter = "";
-    private string? _objectError;
+    private string? _objectError, _copiedKey;
     private DateTime? _fetchedAt;
-    private string? _copiedKey;
     private bool _loadingObjects;
 
-    private IEnumerable<DbObject> Filtered => _objectFilter == ""
+    private IEnumerable<DbObject> Filtered => string.IsNullOrEmpty(_objectFilter)
         ? _objects
         : _objects.Where(o => o.Name.Contains(_objectFilter, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Set by the history page's "Open" button to reload a past query.</summary>
+    /// <summary>Set by the history page Open button to reload a past query.</summary>
     [SupplyParameterFromQuery(Name = "from")] public string? From { get; set; }
 
     protected override void OnInitialized()
@@ -182,10 +211,9 @@
     private async Task RunAsync()
     {
         if (Session.Current is not { } entry || string.IsNullOrWhiteSpace(_sql)) return;
-
         if (!await ConfirmUnfilteredWritesAsync()) return;
 
-        (_running, _copied) = (true, null);
+        _running = true;
         try
         {
             _markdown = await SqlRunner.RunAsMarkdownAsync(entry, _sql, entry.TimeoutSeconds);
@@ -207,14 +235,18 @@
         if (risky.Count == 0) return true;
 
         var what = risky.Count == 1 ? "This statement has" : $"These {risky.Count} statements have";
-        var prompt = $"{what} no WHERE clause:\n\n"
-                     + string.Join("\n", risky.Select(r => "    " + r))
-                     + "\n\nEvery row in the target table will be affected. Run anyway?";
+        var message = $"{what} no WHERE clause, so every row in the target table will be affected:";
+        var listed = string.Join("<br>", risky.Select(r => $"<code>{r}</code>"));
 
-        return await JS.InvokeAsync<bool>("confirm", prompt);
+        var ok = await Dialogs.ShowMessageBoxAsync(
+            "Run without a WHERE clause?",
+            (MarkupString)$"{message}<br><br>{listed}",
+            yesText: "Run anyway", cancelText: "Cancel");
+
+        return ok == true;
     }
 
-    private void Clear() => (_sql, _markdown, _rendered, _copied) = ("", null, default, null);
+    private void Clear() => (_sql, _markdown, _rendered) = ("", null, default);
 
     /// <summary>Column names and types as a markdown table, ready to paste into an LLM.</summary>
     private async Task CopySchemaAsync(DbObject o)
@@ -240,7 +272,7 @@
     private async Task Copy()
     {
         await JS.InvokeVoidAsync("smr.copy", _markdown);
-        _copied = "Copied.";
+        Snackbar.Add("Markdown copied", Severity.Success);
     }
 
     private Task Download() =>

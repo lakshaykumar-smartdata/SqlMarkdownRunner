@@ -3,69 +3,74 @@
 @inject Session Session
 @inject SavedRuns Runs
 @inject IJSRuntime JS
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
 
 <PageTitle>Saved runs</PageTitle>
 
-<h1>Saved runs</h1>
-<p class="muted">Auto-saved markdown, stored under <code>@Runs.Root</code>.</p>
-
-@if (_status is not null)
-{
-    <p class="ok">@_status</p>
-}
+<MudText Typo="Typo.h5">Saved runs</MudText>
+<MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
+    Auto-saved markdown under <code>@Runs.Root</code>
+</MudText>
 
 @if (_files.Count == 0)
 {
-    <p class="muted">Nothing saved yet for this connection — run a query with auto-save ticked.</p>
+    <MudAlert Severity="Severity.Normal" Variant="Variant.Outlined" Dense="true">
+        Nothing saved yet for this connection. Turn on auto-save for it under Connections.
+    </MudAlert>
 }
 else
 {
-    <table class="grid">
-        <thead>
-            <tr><th>File</th><th style="width:11rem">Saved at</th><th style="width:6rem">Size</th><th style="width:1%"></th></tr>
-        </thead>
-        <tbody>
-            @foreach (var f in _files)
-            {
-                <tr class="@(f.FileName == _openFile ? "open" : null)">
-                    <td><code>@f.FileName</code></td>
-                    <td class="nowrap">@f.SavedAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
-                    <td class="nowrap">@($"{f.Bytes / 1024.0:N1} KB")</td>
-                    <td class="nowrap">
-                        <button @onclick="() => Open(f)">Open</button>
-                        <button @onclick="() => DeleteAsync(f)">Delete</button>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
+    <MudTable Items="_files" Dense="true" Hover="true" Elevation="0" Outlined="true"
+              Breakpoint="Breakpoint.None" RowClassFunc="@((f, _) => f.FileName == _openFile ? "mud-theme-primary-hover" : "")">
+        <HeaderContent>
+            <MudTh>File</MudTh>
+            <MudTh Style="width:11rem">Saved at</MudTh>
+            <MudTh Style="width:6rem">Size</MudTh>
+            <MudTh Style="width:1%" />
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><code>@context.FileName</code></MudTd>
+            <MudTd Class="nowrap">@context.SavedAt.ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
+            <MudTd Class="nowrap">@($"{context.Bytes / 1024.0:N1} KB")</MudTd>
+            <MudTd Class="nowrap">
+                <MudTooltip Text="Preview">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Visibility" Size="Size.Small"
+                                   Color="Color.Primary" OnClick="@(() => Open(context))" />
+                </MudTooltip>
+                <MudTooltip Text="Delete">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small"
+                                   Color="Color.Error" OnClick="@(() => DeleteAsync(context))" />
+                </MudTooltip>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
 }
 
 @if (_markdown is not null)
 {
-    <h2>@_openFile</h2>
-    <div class="row" style="margin-bottom:.75rem">
-        <button @onclick="CopyAsync">Copy markdown</button>
-        <button @onclick="DownloadAsync">Download .md</button>
-        <span class="muted">@_status</span>
-    </div>
-    <div class="rendered">@MarkdownView.Render(_markdown)</div>
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-8 mb-3" Spacing="2">
+        <MudText Typo="Typo.subtitle2">@_openFile</MudText>
+        <MudSpacer />
+        <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.ContentCopy"
+                   OnClick="CopyAsync">Copy markdown</MudButton>
+        <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Download"
+                   OnClick="DownloadAsync">Download .md</MudButton>
+    </MudStack>
+
+    <MudPaper Elevation="0" Outlined="true" Class="pa-6">
+        <div class="rendered">@MarkdownView.Render(_markdown)</div>
+    </MudPaper>
 }
 
 @code {
     private List<SavedRun> _files = [];
-    private string? _openFile, _markdown, _status;
+    private string? _openFile, _markdown;
 
     protected override void OnInitialized()
     {
         Session.Changed += OnConnectionChanged;
         Reload();
-    }
-
-    private void Reload()
-    {
-        _files = Session.Name is null ? [] : Runs.List(Session.Name);
-        (_openFile, _markdown, _status) = (null, null, null);
     }
 
     public void Dispose() => Session.Changed -= OnConnectionChanged;
@@ -76,25 +81,36 @@ else
         InvokeAsync(StateHasChanged);
     }
 
+    private void Reload()
+    {
+        _files = Session.Name is null ? [] : Runs.List(Session.Name);
+        (_openFile, _markdown) = (null, null);
+    }
+
     private void Open(SavedRun f)
     {
-        (_openFile, _status) = (f.FileName, null);
+        _openFile = f.FileName;
         _markdown = Runs.Read(Session.Name!, f.FileName) ?? "_File is gone from disk._";
     }
 
     private async Task DeleteAsync(SavedRun f)
     {
-        if (!await JS.InvokeAsync<bool>("confirm", $"Delete {f.FileName}?")) return;
+        var ok = await Dialogs.ShowMessageBoxAsync(
+            "Delete saved run?",
+            f.FileName,
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (ok != true) return;
 
         Runs.Delete(Session.Name!, f.FileName);
         Reload();   // also closes the preview if that was the open file
-        _status = $"Deleted {f.FileName}.";
+        Snackbar.Add($"Deleted {f.FileName}", Severity.Success);
     }
 
     private async Task CopyAsync()
     {
         await JS.InvokeVoidAsync("smr.copy", _markdown);
-        _status = "Copied.";
+        Snackbar.Add("Markdown copied", Severity.Success);
     }
 
     private Task DownloadAsync() =>

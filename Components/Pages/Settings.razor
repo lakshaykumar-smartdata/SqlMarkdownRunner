@@ -2,88 +2,135 @@
 @using Microsoft.Data.SqlClient
 @inject ConnectionStore Store
 @inject Session Session
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
 
 <PageTitle>Connections</PageTitle>
 
-<h1>Database connections</h1>
-<p class="muted">Stored in <code>@Store.FilePath</code> — edit that file by hand any time.</p>
+<MudText Typo="Typo.h5">Database connections</MudText>
+<MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
+    Stored in <code>@Store.FilePath</code> — edit that file by hand any time
+</MudText>
 
-<table class="grid">
-    <thead>
-        <tr><th>Name</th><th>Server / database</th><th style="width:6rem">Timeout</th><th style="width:7rem">Auto-save</th><th style="width:1%"></th></tr>
-    </thead>
-    <tbody>
-        @foreach (var c in _connections)
-        {
-            <tr>
-                <td>@c.Name</td>
-                <td><code>@SqlRunner.Describe(c.ConnectionString)</code></td>
-                <td class="nowrap">@c.TimeoutSeconds s</td>
-                <td class="nowrap">@(c.AutoSaveMarkdown ? "on" : "off")</td>
-                <td class="nowrap">
-                    <button @onclick="() => Edit(c)">Edit</button>
-                    <button @onclick="() => Delete(c)">Delete</button>
-                </td>
-            </tr>
-        }
-        @if (_connections.Count == 0)
-        {
-            <tr><td colspan="5" class="muted">No connections yet.</td></tr>
-        }
-    </tbody>
-</table>
+@if (_connections.Count == 0)
+{
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true" Class="mb-4">
+        No connections yet. Add one below.
+    </MudAlert>
+}
+else
+{
+    <MudTable Items="_connections" Dense="true" Hover="true" Elevation="0" Outlined="true" Breakpoint="Breakpoint.None" Class="mb-8">
+        <HeaderContent>
+            <MudTh>Name</MudTh>
+            <MudTh>Server / database</MudTh>
+            <MudTh Style="width:6rem">Timeout</MudTh>
+            <MudTh Style="width:7rem">Auto-save</MudTh>
+            <MudTh Style="width:1%" />
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Name</MudTd>
+            <MudTd><code>@SqlRunner.Describe(context.ConnectionString)</code></MudTd>
+            <MudTd Class="nowrap">@context.TimeoutSeconds s</MudTd>
+            <MudTd>
+                <MudIcon Size="Size.Small"
+                         Color="@(context.AutoSaveMarkdown ? Color.Success : Color.Default)"
+                         Icon="@(context.AutoSaveMarkdown ? Icons.Material.Outlined.CheckCircle : Icons.Material.Outlined.DoNotDisturbOn)" />
+            </MudTd>
+            <MudTd Class="nowrap">
+                <MudTooltip Text="Edit">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Edit" Size="Size.Small"
+                                   Color="Color.Primary" OnClick="@(() => Edit(context))" />
+                </MudTooltip>
+                <MudTooltip Text="Delete">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small"
+                                   Color="Color.Error" OnClick="@(() => DeleteAsync(context))" />
+                </MudTooltip>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
 
-<h2>@(_editingOriginal is null ? "Add connection" : $"Edit “{_editingOriginal}”")</h2>
-<div class="form">
-    <label>Name<input @bind="_name" placeholder="Reporting DB" /></label>
+<MudText Typo="Typo.h6" Class="mb-3">
+    @(_editingOriginal is null ? "Add connection" : $"Edit {_editingOriginal}")
+</MudText>
 
-    <label>Connection string — paste straight from appsettings.json (surrounding quotes are fine)
-        <textarea @bind="ConnectionString" rows="3" spellcheck="false" class="mono"
-                  placeholder="Data Source=localhost;Initial Catalog=MyDb;User Id=sa;Password=..."></textarea>
-    </label>
+<MudPaper Elevation="0" Outlined="true" Class="pa-6" Style="max-width:56rem">
+    <MudStack Spacing="4">
+        <MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
+                      Placeholder="Reporting DB" />
 
-    <fieldset>
-        <legend>… or fill the fields (they stay in sync with the string above)</legend>
-        <div class="row">
-            <label>Server<input @bind="_builder.DataSource" @bind:after="SyncFromFields" placeholder="localhost\SQLEXPRESS" /></label>
-            <label>Database<input @bind="_builder.InitialCatalog" @bind:after="SyncFromFields" placeholder="MyDatabase" /></label>
-        </div>
-        <div class="row">
-            <label class="check"><input type="checkbox" @bind="_builder.IntegratedSecurity" @bind:after="SyncFromFields" /> Windows auth</label>
-            <label>User Id<input @bind="_builder.UserID" @bind:after="SyncFromFields" disabled="@_builder.IntegratedSecurity" /></label>
-            <label>Password<input type="password" @bind="_builder.Password" @bind:after="SyncFromFields" disabled="@_builder.IntegratedSecurity" /></label>
-        </div>
-        <div class="row">
-            <label class="check"><input type="checkbox" @bind="_builder.TrustServerCertificate" @bind:after="SyncFromFields" /> Trust server certificate</label>
-            <label class="check"><input type="checkbox" @bind="_builder.MultipleActiveResultSets" @bind:after="SyncFromFields" /> MultipleActiveResultSets</label>
-        </div>
-    </fieldset>
+        <MudTextField T="string" Value="ConnectionString" ValueChanged="@(v => ConnectionString = v)"
+                      Label="Connection string" Variant="Variant.Outlined" Margin="Margin.Dense"
+                      Lines="3" Class="mono"
+                      HelperText="Paste straight from appsettings.json — surrounding quotes are fine" />
 
-    <div class="row">
-        <label class="narrow">Query timeout (s)
-            <input type="number" min="1" max="3600" @bind="_timeout" style="width:7rem" />
-        </label>
-        <label class="check" title="Write every run to wwwroot/sql-queries/&lt;connection&gt;/">
-            <input type="checkbox" @bind="_autoSave" /> Auto-save markdown of every run
-        </label>
-    </div>
+        <MudExpansionPanels Elevation="0" Outlined="true" Dense="true">
+            <MudExpansionPanel Text="… or fill the fields (they stay in sync with the string above)">
+                <MudGrid Spacing="3">
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_builder.DataSource" @bind-Value:after="SyncFromFields"
+                                      Label="Server" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_builder.InitialCatalog" @bind-Value:after="SyncFromFields"
+                                      Label="Database" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_builder.UserID" @bind-Value:after="SyncFromFields"
+                                      Label="User Id" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                      Disabled="_builder.IntegratedSecurity" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_builder.Password" @bind-Value:after="SyncFromFields"
+                                      Label="Password" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                      InputType="InputType.Password" Disabled="_builder.IntegratedSecurity" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudStack Row="true" Wrap="Wrap.Wrap">
+                            <MudCheckBox @bind-Value="_builder.IntegratedSecurity" @bind-Value:after="SyncFromFields"
+                                         Label="Windows auth" Size="Size.Small" Dense="true" />
+                            <MudCheckBox @bind-Value="_builder.TrustServerCertificate" @bind-Value:after="SyncFromFields"
+                                         Label="Trust server certificate" Size="Size.Small" Dense="true" />
+                            <MudCheckBox @bind-Value="_builder.MultipleActiveResultSets" @bind-Value:after="SyncFromFields"
+                                         Label="MultipleActiveResultSets" Size="Size.Small" Dense="true" />
+                        </MudStack>
+                    </MudItem>
+                </MudGrid>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
 
-    <div class="row">
-        <button class="primary" @onclick="Save">Save</button>
-        <button @onclick="TestAsync" disabled="@_testing">Test</button>
-        <button @onclick="ClearForm">@(_editingOriginal is null ? "Clear" : "Cancel")</button>
-        <span class="@(_status.StartsWith("OK") ? "ok" : "err")">@_status</span>
-    </div>
-</div>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="4" Wrap="Wrap.Wrap">
+            <MudNumericField @bind-Value="_timeout" Label="Query timeout (s)" Variant="Variant.Outlined"
+                             Margin="Margin.Dense" Min="1" Max="3600" Style="max-width:11rem" />
+            <MudCheckBox @bind-Value="_autoSave" Size="Size.Small" Dense="true"
+                         Label="Auto-save markdown of every run" />
+        </MudStack>
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save"
+                       StartIcon="@Icons.Material.Outlined.Save">Save</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="TestAsync" Disabled="_testing"
+                       StartIcon="@Icons.Material.Outlined.NetworkCheck">Test</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="ClearForm">
+                @(_editingOriginal is null ? "Clear" : "Cancel")
+            </MudButton>
+            @if (_status is not null)
+            {
+                <MudText Typo="Typo.body2" Color="@(_statusOk ? Color.Success : Color.Error)">@_status</MudText>
+            }
+        </MudStack>
+    </MudStack>
+</MudPaper>
 
 @code {
     private List<DbConnectionEntry> _connections = [];
     private SqlConnectionStringBuilder _builder = new();
-    private string _name = "", _connectionString = "", _status = "";
-    private string? _editingOriginal;
+    private string _name = "", _connectionString = "";
+    private string? _editingOriginal, _status;
+    private bool _statusOk, _testing;
     private int _timeout = 60;
     private bool _autoSave = true;
-    private bool _testing;
 
     protected override void OnInitialized() => _connections = Store.Load();
 
@@ -117,29 +164,34 @@
 
     private void Edit(DbConnectionEntry c)
     {
-        (_editingOriginal, _name, _status) = (c.Name, c.Name, "");
+        (_editingOriginal, _name, _status) = (c.Name, c.Name, null);
         (_timeout, _autoSave) = (c.TimeoutSeconds, c.AutoSaveMarkdown);
         ConnectionString = c.ConnectionString;
     }
 
-    private void Delete(DbConnectionEntry c)
+    private async Task DeleteAsync(DbConnectionEntry c)
     {
+        var ok = await Dialogs.ShowMessageBoxAsync(
+            "Delete connection?", c.Name, yesText: "Delete", cancelText: "Cancel");
+
+        if (ok != true) return;
+
         _connections.RemoveAll(x => x.Name == c.Name);
-        Store.Save(_connections);
-        Session.Reload();
+        Persist();
         if (_editingOriginal == c.Name) ClearForm();
+        Snackbar.Add($"Deleted {c.Name}", Severity.Success);
     }
 
     private void Save()
     {
         if (string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_connectionString))
         {
-            _status = "Name and connection string are both required.";
+            SetStatus("Name and connection string are both required.", ok: false);
             return;
         }
         if (_name != _editingOriginal && _connections.Any(c => c.Name == _name))
         {
-            _status = $"A connection named “{_name}” already exists.";
+            SetStatus($"A connection named {_name} already exists.", ok: false);
             return;
         }
 
@@ -147,10 +199,16 @@
         var index = _editingOriginal is null ? -1 : _connections.FindIndex(c => c.Name == _editingOriginal);
         if (index >= 0) _connections[index] = entry; else _connections.Add(entry);
 
+        Persist();
+        ClearForm();
+        Snackbar.Add($"Saved {entry.Name}", Severity.Success);
+    }
+
+    /// <summary>The header follows this list, so it has to be told after every edit.</summary>
+    private void Persist()
+    {
         Store.Save(_connections);
         Session.Reload();
-        ClearForm();
-        _status = "OK — saved.";
     }
 
     private async Task TestAsync()
@@ -160,11 +218,11 @@
         {
             await using var conn = new SqlConnection(_connectionString);
             await conn.OpenAsync();
-            _status = $"OK — connected to {conn.DataSource}/{conn.Database}.";
+            SetStatus($"Connected to {conn.DataSource}/{conn.Database}.", ok: true);
         }
         catch (Exception ex)
         {
-            _status = ex.Message;
+            SetStatus(ex.Message, ok: false);
         }
         finally
         {
@@ -172,9 +230,11 @@
         }
     }
 
+    private void SetStatus(string message, bool ok) => (_status, _statusOk) = (message, ok);
+
     private void ClearForm()
     {
-        (_editingOriginal, _name, _connectionString, _status) = (null, "", "", "");
+        (_editingOriginal, _name, _connectionString, _status) = (null, "", "", null);
         (_timeout, _autoSave) = (60, true);
         _builder = new SqlConnectionStringBuilder();
     }

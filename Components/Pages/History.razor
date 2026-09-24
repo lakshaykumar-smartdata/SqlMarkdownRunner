@@ -4,48 +4,59 @@
 @inject HistoryStore Hist
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
 
 <PageTitle>Query history</PageTitle>
 
-<h1>Query history</h1>
-<p class="muted">Last @HistoryStore.MaxEntries runs, stored in <code>@Hist.FilePath</code>.</p>
-
-<div class="form">
-    <div class="row">
-        <button @onclick="ClearAsync" disabled="@(_entries.Count == 0)">Clear history for this connection</button>
-        <span class="muted">@_copied</span>
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <div>
+        <MudText Typo="Typo.h5">Query history</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            Last @HistoryStore.MaxEntries runs per connection, stored in <code>@Hist.FilePath</code>
+        </MudText>
     </div>
-</div>
+    <MudSpacer />
+    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Error"
+               StartIcon="@Icons.Material.Outlined.DeleteSweep"
+               Disabled="@(_entries.Count == 0)" OnClick="ClearAsync">
+        Clear history
+    </MudButton>
+</MudStack>
 
 @if (_entries.Count == 0)
 {
-    <p class="muted" style="margin-top:1.25rem">Nothing here yet — run a query and it will show up.</p>
+    <MudAlert Severity="Severity.Normal" Variant="Variant.Outlined" Dense="true">
+        Nothing here yet for this connection. Run a query and it will show up.
+    </MudAlert>
 }
 else
 {
-    <table class="grid history">
-        <thead>
-            <tr><th style="width:11rem">Run at</th><th>SQL</th><th style="width:1%"></th></tr>
-        </thead>
-        <tbody>
-            @foreach (var e in _entries)
-            {
-                <tr>
-                    <td class="nowrap">@e.RunAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
-                    <td><pre class="sql">@e.Sql</pre></td>
-                    <td class="nowrap">
-                        <button @onclick="() => Open(e)">Open</button>
-                        <button @onclick="() => CopyAsync(e)">Copy</button>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
+    <MudTable Items="_entries" Dense="true" Hover="true" Elevation="0" Outlined="true" Breakpoint="Breakpoint.None">
+        <HeaderContent>
+            <MudTh Style="width:11rem">Run at</MudTh>
+            <MudTh>SQL</MudTh>
+            <MudTh Style="width:1%" />
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd Class="nowrap">@context.RunAt.ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
+            <MudTd><pre class="sql">@context.Sql</pre></MudTd>
+            <MudTd Class="nowrap">
+                <MudTooltip Text="Load into the editor">
+                    <MudIconButton Icon="@Icons.Material.Outlined.OpenInNew" Size="Size.Small"
+                                   Color="Color.Primary" OnClick="@(() => Open(context))" />
+                </MudTooltip>
+                <MudTooltip Text="Copy SQL">
+                    <MudIconButton Icon="@Icons.Material.Outlined.ContentCopy" Size="Size.Small"
+                                   OnClick="@(() => CopyAsync(context))" />
+                </MudTooltip>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
 }
 
 @code {
     private List<HistoryEntry> _entries = [];
-    private string? _copied;
 
     protected override void OnInitialized()
     {
@@ -61,24 +72,28 @@ else
         InvokeAsync(StateHasChanged);
     }
 
-    private void Reload()
-    {
-        _copied = null;
+    private void Reload() =>
         _entries = Session.Name is null ? [] : Hist.Load().Where(e => e.Connection == Session.Name).ToList();
-    }
 
     private void Open(HistoryEntry e) => Nav.NavigateTo($"/?from={e.Id}");
 
     private async Task CopyAsync(HistoryEntry e)
     {
         await JS.InvokeVoidAsync("smr.copy", e.Sql);
-        _copied = "SQL copied.";
+        Snackbar.Add("SQL copied", Severity.Success);
     }
 
     private async Task ClearAsync()
     {
-        if (!await JS.InvokeAsync<bool>("confirm", $"Delete {_entries.Count} history entr{(_entries.Count == 1 ? "y" : "ies")}?")) return;
+        var ok = await Dialogs.ShowMessageBoxAsync(
+            "Clear history?",
+            $"Deletes {_entries.Count} entr{(_entries.Count == 1 ? "y" : "ies")} for {Session.Name}.",
+            yesText: "Clear", cancelText: "Cancel");
+
+        if (ok != true) return;
+
         Hist.Clear(Session.Name);
         Reload();
+        Snackbar.Add("History cleared", Severity.Success);
     }
 }

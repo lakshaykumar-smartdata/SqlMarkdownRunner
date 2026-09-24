@@ -2,44 +2,92 @@
 @implements IDisposable
 @inject Session Session
 
-<nav class="topnav">
-    <span class="brand">SQL <span>→</span> markdown</span>
-    <NavLink href="" Match="NavLinkMatch.All">Run SQL</NavLink>
-    <NavLink href="history">History</NavLink>
-    <NavLink href="saved">Saved runs</NavLink>
-    <NavLink href="settings">Connections</NavLink>
+<MudThemeProvider Theme="Theme" />
+<MudPopoverProvider />
+<MudDialogProvider MaxWidth="MaxWidth.ExtraSmall" CloseButton="true" />
+<MudSnackbarProvider />
 
-    <div class="topnav-connection">
+<MudLayout>
+    <MudAppBar Elevation="0" Color="Color.Inherit" Class="app-bar" Dense="true">
+        <MudText Typo="Typo.h6" Class="brand mr-8">SQL <span>&#8594;</span> markdown</MudText>
+
+        <div class="d-none d-sm-flex align-center">
+            <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.PlayArrow">Run SQL</MudNavLink>
+            <MudNavLink Href="history" Icon="@Icons.Material.Outlined.History">History</MudNavLink>
+            <MudNavLink Href="saved" Icon="@Icons.Material.Outlined.FolderOpen">Saved runs</MudNavLink>
+            <MudNavLink Href="settings" Icon="@Icons.Material.Outlined.Storage">Connections</MudNavLink>
+        </div>
+
+        <MudSpacer />
+
         @if (Session.Connections.Count == 0)
         {
-            <a href="settings" class="no-connection">Add a connection</a>
+            <MudButton Href="settings" Variant="Variant.Outlined" Color="Color.Warning" Size="Size.Small"
+                       StartIcon="@Icons.Material.Outlined.Add">
+                Add a connection
+            </MudButton>
         }
         else
         {
-            <select @bind="Session.Name" title="Everything below runs against this connection">
+            <MudSelect T="string" Value="Session.Name" ValueChanged="SelectConnection"
+                       Dense="true" Margin="Margin.Dense" Variant="Variant.Outlined"
+                       Class="connection-select" Style="max-width:17rem"
+                       Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Dns">
                 @foreach (var c in Session.Connections)
                 {
-                    <option value="@c.Name">@c.Name</option>
+                    <MudSelectItem T="string" Value="@c.Name">@c.Name</MudSelectItem>
                 }
-            </select>
+            </MudSelect>
         }
-    </div>
-</nav>
+    </MudAppBar>
 
-<main>
-    @Body
-</main>
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="py-6">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
 
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.
     <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
+    <span class="dismiss">&#128937;</span>
 </div>
 
 @code {
+    private static readonly MudTheme Theme = new()
+    {
+        PaletteLight = new PaletteLight
+        {
+            Primary = "#2563eb",
+            Secondary = "#0f172a",
+            AppbarBackground = "#0f172a",
+            AppbarText = "#e2e8f0",
+            Background = "#f5f7fa",
+            Surface = "#ffffff",
+            TextPrimary = "#101828",
+            TextSecondary = "#667085",
+            Divider = "#e4e7ec",
+            LinesDefault = "#e4e7ec",
+            TableLines = "#eaecf0",
+            ActionDefault = "#667085",
+        },
+        Typography = new Typography
+        {
+            Default = new DefaultTypography { FontFamily = ["Inter", "Segoe UI", "system-ui", "sans-serif"], FontSize = ".875rem" },
+            H5 = new H5Typography { FontWeight = "650", FontSize = "1.4rem", LetterSpacing = "-.01em" },
+            H6 = new H6Typography { FontWeight = "700", FontSize = "1rem", LetterSpacing = "-.01em" },
+            Subtitle2 = new Subtitle2Typography { FontWeight = "650", FontSize = ".8rem" },
+            Button = new ButtonTypography { FontWeight = "600", TextTransform = "none" },
+        },
+        LayoutProperties = new LayoutProperties { DefaultBorderRadius = "8px" },
+    };
+
     protected override void OnInitialized() => Session.Changed += Refresh;
 
     public void Dispose() => Session.Changed -= Refresh;
+
+    private void SelectConnection(string name) => Session.Name = name;
 
     private void Refresh() => InvokeAsync(StateHasChanged);
 }
