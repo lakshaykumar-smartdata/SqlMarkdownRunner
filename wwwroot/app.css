@@ -114,8 +114,20 @@ pre.sql { margin: 0; max-height: 8rem; overflow: auto; white-space: pre-wrap; fo
 /* the object browser stays hand-built: MudBlazor has no dense draggable tree like this */
 .objects-scroll { max-height: 34rem; overflow: auto; }
 
-/* a procedure or function body, previewed inside the object panel */
-pre.definition { margin: 0; max-height: 16rem; overflow: auto; white-space: pre; font-size: .72rem; line-height: 1.5; color: #1d2939; background: #fbfbfc; border: 1px solid var(--line); border-radius: 6px; padding: .5rem; }
+/* procedure and function definitions */
+.objects-row { display: flex; align-items: center; gap: .15rem; }
+.objects-row .objects-item { flex: 1 1 auto; min-width: 0; }
+.objects-eye { display: inline-flex; align-items: center; padding: .15rem; border-radius: 4px; color: var(--muted); }
+.objects-eye:hover { background: var(--accent-wash); color: var(--accent-dark); }
 
-/* a procedure or function body, previewed inside the object panel */
-pre.definition { margin: 0; max-height: 16rem; overflow: auto; white-space: pre; font-size: .72rem; line-height: 1.5; color: #1d2939; background: #fbfbfc; border: 1px solid var(--line); border-radius: 6px; padding: .5rem; }
+/* the definition page */
+pre.definition-full { margin: 0; white-space: pre; overflow-x: auto; font-size: .8125rem; line-height: 1.6; color: #1d2939; }
+
+/* procedure and function definitions */
+.objects-row { display: flex; align-items: center; gap: .15rem; }
+.objects-row .objects-item { flex: 1 1 auto; min-width: 0; }
+.objects-eye { display: inline-flex; align-items: center; padding: .15rem; border-radius: 4px; color: var(--muted); }
+.objects-eye:hover { background: var(--accent-wash); color: var(--accent-dark); }
+
+/* the definition page */
+pre.definition-full { margin: 0; white-space: pre; overflow-x: auto; font-size: .8125rem; line-height: 1.6; color: #1d2939; }

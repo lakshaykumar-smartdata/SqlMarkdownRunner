@@ -1,0 +1,65 @@
+@page "/definition"
+@inject ConnectionStore Store
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>@(Name ?? "Definition")</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-4">
+    <div>
+        <MudText Typo="Typo.h5">@Name</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">@Connection</MudText>
+    </div>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CopyAsync"
+               Disabled="@(_definition is null)"
+               StartIcon="@Icons.Material.Outlined.ContentCopy">Copy definition</MudButton>
+</MudStack>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Dense="true">@_error</MudAlert>
+}
+else if (_definition is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <MudPaper Elevation="0" Outlined="true" Class="pa-4">
+        <pre class="definition-full">@_definition</pre>
+    </MudPaper>
+}
+
+@code {
+    [SupplyParameterFromQuery] public string? Connection { get; set; }
+    [SupplyParameterFromQuery] public string? Name { get; set; }
+
+    private string? _definition, _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var entry = Store.Load().FirstOrDefault(c => c.Name == Connection);
+        if (entry is null || string.IsNullOrWhiteSpace(Name))
+        {
+            _error = "Unknown connection or object.";
+            return;
+        }
+
+        try
+        {
+            _definition = await SqlRunner.GetDefinitionAsync(entry, Name)
+                          ?? "-- No definition available (the object may be encrypted).";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task CopyAsync()
+    {
+        await JS.InvokeVoidAsync("smr.copy", _definition);
+        Snackbar.Add("Definition copied", Severity.Success);
+    }
+}
