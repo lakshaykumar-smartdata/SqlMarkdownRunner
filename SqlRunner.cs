@@ -270,6 +270,20 @@ public partial class SqlRunner
             .ToList();
     }
 
+    /// <summary>The CREATE text of a procedure or function. Null when it is encrypted.</summary>
+    public static async Task<string?> GetDefinitionAsync(
+        DbConnectionEntry entry, string name, CancellationToken ct = default)
+    {
+        await using var conn = new SqlConnection(entry.ConnectionString);
+        await conn.OpenAsync(ct);
+
+        await using var cmd = new SqlCommand("SELECT OBJECT_DEFINITION(OBJECT_ID(@name));", conn)
+            { CommandTimeout = 30 };
+        cmd.Parameters.AddWithValue("@name", name);
+
+        return await cmd.ExecuteScalarAsync(ct) as string;
+    }
+
     /// <summary>What dropping the name into the editor writes: a runnable call, parameters included.</summary>
     internal static string CallTemplate(string type, string name, List<Param> parameters)
     {
