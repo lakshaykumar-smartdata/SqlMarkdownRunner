@@ -88,8 +88,16 @@
                     @foreach (var group in Filtered.GroupBy(o => o.Kind))
                     {
                         <div class="objects-group">
-                            <div class="objects-kind">@group.Key <span class="muted">@group.Count()</span></div>
-                            @foreach (var o in group)
+                            <div class="objects-kind" @onclick="() => ToggleKind(group.Key)">
+                                <span class="objects-kind-label">
+                                    <MudIcon Size="Size.Small" Icon="@(IsCollapsed(group.Key)
+                                        ? Icons.Material.Filled.ChevronRight
+                                        : Icons.Material.Filled.ExpandMore)" />
+                                    @group.Key
+                                </span>
+                                <span class="muted">@group.Count()</span>
+                            </div>
+                            @foreach (var o in IsCollapsed(group.Key) ? Enumerable.Empty<DbObject>() : group)
                             {
                                 @if (o.Columns.Count > 0)
                                 {
@@ -273,6 +281,16 @@
         var columns = string.Join(",\n", o.Columns.Select(c => $"    {c.Name}"));
         await JS.InvokeVoidAsync("smr.copy", $"SELECT TOP 100\n{columns}\nFROM {o.Name};");
         _copiedKey = $"{o.Name}:select";
+    }
+
+    private readonly HashSet<string> _collapsedKinds = [];
+
+    /// <summary>A filter is a search, so it overrides whatever is collapsed.</summary>
+    private bool IsCollapsed(string kind) => _objectFilter == "" && _collapsedKinds.Contains(kind);
+
+    private void ToggleKind(string kind)
+    {
+        if (!_collapsedKinds.Add(kind)) _collapsedKinds.Remove(kind);
     }
 
     private string DefinitionUrl(DbObject o) =>
