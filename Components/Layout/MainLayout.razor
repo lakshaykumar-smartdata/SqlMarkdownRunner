@@ -31,8 +31,11 @@
         {
             <MudSelect T="string" Value="Session.Name" ValueChanged="SelectConnection"
                        Dense="true" Margin="Margin.Dense" Variant="Variant.Outlined"
-                       Class="connection-select" Style="max-width:17rem"
-                       Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Dns">
+                       Class="@($"connection-select {(Session.Current?.IsProduction == true ? "prod" : "")}")"
+                       Style="max-width:17rem" Adornment="Adornment.Start"
+                       AdornmentIcon="@(Session.Current?.IsProduction == true
+                           ? Icons.Material.Filled.Lock
+                           : Icons.Material.Outlined.Dns)">
                 @foreach (var c in Session.Connections)
                 {
                     <MudSelectItem T="string" Value="@c.Name">@c.Name</MudSelectItem>

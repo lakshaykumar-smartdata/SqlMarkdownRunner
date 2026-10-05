@@ -134,3 +134,10 @@ pre.definition-full { margin: 0; white-space: pre; overflow-x: auto; font-size: 
 
 /* the definition page */
 pre.definition-full { margin: 0; white-space: pre; overflow-x: auto; font-size: .8125rem; line-height: 1.6; color: #1d2939; }
+
+/* a production connection should be impossible to miss, on every page */
+.connection-select.prod .mud-input-outlined { background: rgba(248, 113, 113, .22); }
+.connection-select.prod .mud-input-outlined-border { border-color: #f87171 !important; border-width: 2px !important; }
+.connection-select.prod:hover .mud-input-outlined { background: rgba(248, 113, 113, .3); }
+.connection-select.prod .mud-input-adornment .mud-icon-root { color: #fca5a5 !important; }
+.prod-badge { font-weight: 700; letter-spacing: .02em; }

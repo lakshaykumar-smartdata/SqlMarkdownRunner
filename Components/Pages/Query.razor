@@ -10,7 +10,16 @@
 
 <PageTitle>SQL to markdown</PageTitle>
 
-<MudText Typo="Typo.h5" Class="mb-4">Run SQL</MudText>
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3" Class="mb-4">
+    <MudText Typo="Typo.h5">Run SQL</MudText>
+    @if (Session.Current?.IsProduction == true)
+    {
+        <MudChip T="string" Color="Color.Error" Variant="Variant.Filled" Size="Size.Small"
+                 Icon="@Icons.Material.Filled.WarningAmber" Class="prod-badge">
+            Production — reads only
+        </MudChip>
+    }
+</MudStack>
 
 @if (Session.Current is null)
 {
