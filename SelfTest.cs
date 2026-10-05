@@ -61,6 +61,16 @@ public static class SelfTest
         Debug.Assert(legacy.TimeoutSeconds == 60, "timeout default lost on deserialise");
         Debug.Assert(legacy.AutoSaveMarkdown, "auto-save default lost on deserialise");
 
+        Debug.Assert(SqlRunner.ToAlter("CREATE PROCEDURE dbo.x AS SELECT 1")
+            == "ALTER PROCEDURE dbo.x AS SELECT 1");
+        Debug.Assert(SqlRunner.ToAlter("ALTER PROCEDURE dbo.x AS SELECT 1")
+            == "ALTER PROCEDURE dbo.x AS SELECT 1");            // nothing to swap
+        Debug.Assert(SqlRunner.ToAlter("-- CREATE me later\nCREATE PROC dbo.x AS SELECT 1")
+            == "-- CREATE me later\nALTER PROC dbo.x AS SELECT 1");   // the comment is left alone
+        Debug.Assert(SqlRunner.ToAlter("/* CREATE */ CREATE FUNCTION dbo.f() RETURNS int AS BEGIN RETURN 1 END")
+            == "/* CREATE */ ALTER FUNCTION dbo.f() RETURNS int AS BEGIN RETURN 1 END");
+        Debug.Assert(SqlRunner.ToAlter("CREATE PROC dbo.x AS SELECT NCREATE").EndsWith("SELECT NCREATE"));
+
         Console.WriteLine("self-test: OK");
     }
 }

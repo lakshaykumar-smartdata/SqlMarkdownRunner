@@ -270,6 +270,36 @@ public partial class SqlRunner
             .ToList();
     }
 
+    [GeneratedRegex(@"\bCREATE\b", RegexOptions.IgnoreCase)]
+    private static partial Regex CreateKeyword();
+
+    /// <summary>
+    /// Turns a stored CREATE definition into the ALTER that saves it back, leaving every other
+    /// character alone. Comments are blanked first, so a CREATE inside the header block is safe.
+    /// </summary>
+    public static string ToAlter(string definition)
+    {
+        var clean = CommentsAndLiterals().Replace(definition, m => new string(' ', m.Length));
+        var create = CreateKeyword().Match(clean);
+
+        return create.Success
+            ? definition[..create.Index] + "ALTER" + definition[(create.Index + create.Length)..]
+            : definition;   // already an ALTER, or nothing to swap
+    }
+
+    /// <summary>Applies an edited definition. The text is stored verbatim by SQL Server.</summary>
+    public static async Task AlterAsync(
+        DbConnectionEntry entry, string definition, CancellationToken ct = default)
+    {
+        await using var conn = new SqlConnection(entry.ConnectionString);
+        await conn.OpenAsync(ct);
+
+        // ALTER has to be the only statement in its batch.
+        await using var cmd = new SqlCommand(ToAlter(definition), conn)
+            { CommandTimeout = entry.TimeoutSeconds };
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
     /// <summary>The CREATE text of a procedure or function. Null when it is encrypted.</summary>
     public static async Task<string?> GetDefinitionAsync(
         DbConnectionEntry entry, string name, CancellationToken ct = default)

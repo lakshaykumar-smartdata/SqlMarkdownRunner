@@ -1,6 +1,8 @@
 @page "/definition"
 @inject ConnectionStore Store
+@inject SavedRuns Runs
 @inject IJSRuntime JS
+@inject IDialogService Dialogs
 @inject ISnackbar Snackbar
 
 <PageTitle>@(Name ?? "Definition")</PageTitle>
@@ -11,20 +13,45 @@
         <MudText Typo="Typo.body2" Class="mud-text-secondary">@Connection</MudText>
     </div>
     <MudSpacer />
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CopyAsync"
-               Disabled="@(_definition is null)"
-               StartIcon="@Icons.Material.Outlined.ContentCopy">Copy definition</MudButton>
+
+    @if (_editing)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="_saving"
+                   StartIcon="@Icons.Material.Outlined.Save">
+            @(_saving ? "Saving…" : "Save to database")
+        </MudButton>
+        <MudButton Variant="Variant.Text" OnClick="CancelEdit" Disabled="_saving">Cancel</MudButton>
+    }
+    else
+    {
+        <MudButton Variant="Variant.Outlined" OnClick="StartEdit" Disabled="@(_definition is null)"
+                   StartIcon="@Icons.Material.Outlined.Edit">Edit</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CopyAsync"
+                   Disabled="@(_definition is null)"
+                   StartIcon="@Icons.Material.Outlined.ContentCopy">Copy definition</MudButton>
+    }
 </MudStack>
 
 @if (_error is not null)
 {
-    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Dense="true">@_error</MudAlert>
+    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Dense="true" Class="mb-4">@_error</MudAlert>
 }
-else if (_definition is null)
+
+@if (_editing)
+{
+    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="mb-3">
+        Saving runs ALTER against <strong>@Connection</strong> straight away. The current definition is
+        backed up to Saved runs first.
+    </MudAlert>
+
+    <MudTextField @bind-Value="_draft" T="string" Variant="Variant.Outlined" Margin="Margin.Dense"
+                  Lines="30" Class="mono" Label="Definition" />
+}
+else if (_definition is null && _error is null)
 {
     <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
 }
-else
+else if (_definition is not null)
 {
     <MudPaper Elevation="0" Outlined="true" Class="pa-4">
         <pre class="definition-full">@_definition</pre>
@@ -35,26 +62,83 @@ else
     [SupplyParameterFromQuery] public string? Connection { get; set; }
     [SupplyParameterFromQuery] public string? Name { get; set; }
 
+    private DbConnectionEntry? _entry;
     private string? _definition, _error;
+    private string _draft = "";
+    private bool _editing, _saving;
 
     protected override async Task OnInitializedAsync()
     {
-        var entry = Store.Load().FirstOrDefault(c => c.Name == Connection);
-        if (entry is null || string.IsNullOrWhiteSpace(Name))
+        _entry = Store.Load().FirstOrDefault(c => c.Name == Connection);
+        if (_entry is null || string.IsNullOrWhiteSpace(Name))
         {
             _error = "Unknown connection or object.";
             return;
         }
 
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
         try
         {
-            _definition = await SqlRunner.GetDefinitionAsync(entry, Name)
+            _definition = await SqlRunner.GetDefinitionAsync(_entry!, Name!)
                           ?? "-- No definition available (the object may be encrypted).";
         }
         catch (Exception ex)
         {
             _error = ex.Message;
         }
+    }
+
+    private void StartEdit() => (_editing, _draft, _error) = (true, _definition ?? "", null);
+
+    private void CancelEdit() => (_editing, _draft) = (false, "");
+
+    private async Task SaveAsync()
+    {
+        if (_entry is null || string.IsNullOrWhiteSpace(_draft)) return;
+
+        var ok = await Dialogs.ShowMessageBoxAsync(
+            "Save to the database?",
+            (MarkupString)($"<code>{Name}</code> will be altered on <strong>{_entry.Name}</strong> " +
+                           "immediately, and this cannot be undone.<br><br>" +
+                           "The definition as it stands now is backed up to Saved runs first."),
+            yesText: "Save", cancelText: "Cancel");
+
+        if (ok != true) return;
+
+        _saving = true;
+        try
+        {
+            Backup();
+            await SqlRunner.AlterAsync(_entry, _draft);
+
+            _editing = false;
+            await LoadAsync();   // show what is actually stored now
+            Snackbar.Add($"{Name} saved to {_entry.Name}", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;   // the draft stays open so the edit is not lost
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    /// <summary>Keeps the pre-change text, so a bad edit is always one copy-paste from recovery.</summary>
+    private void Backup()
+    {
+        var markdown = $"# Definition backup — {Name}\n\n"
+                       + $"- **Connection:** {_entry!.Name} — `{SqlRunner.Describe(_entry.ConnectionString)}`\n"
+                       + $"- **Taken (local):** {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n"
+                       + "- **Reason:** definition about to be altered from this app\n\n"
+                       + "```sql\n" + _definition + "\n```\n";
+
+        Runs.Save(_entry.Name, markdown, Name);
     }
 
     private async Task CopyAsync()

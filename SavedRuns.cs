@@ -9,12 +9,13 @@ public class SavedRuns(IWebHostEnvironment env)
 {
     public string Root { get; } = Path.Combine(env.WebRootPath, "sql-queries");
 
-    public string Save(string connection, string markdown)
+    public string Save(string connection, string markdown, string? label = null)
     {
         var folder = Path.Combine(Root, Safe(connection));
         Directory.CreateDirectory(folder);
 
-        var path = Path.Combine(folder, $"{Safe(connection)}-{DateTime.Now:yyyyMMdd-HHmmss}.md");
+        var stem = label is null ? Safe(connection) : $"{Safe(connection)}-{Safe(label)}";
+        var path = Path.Combine(folder, $"{stem}-{DateTime.Now:yyyyMMdd-HHmmss}.md");
         File.WriteAllText(path, markdown);
         return path;
     }
