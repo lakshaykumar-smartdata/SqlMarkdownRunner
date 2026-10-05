@@ -1,13 +1,17 @@
+using System.Text.Json;
+
 namespace SqlMarkdownRunner;
 
 /// <summary>
-/// The connection every page works against, held for the life of one browser circuit. The header
-/// picks it; Run SQL, History and Saved runs all follow it.
+/// The connection every page works against. The header picks it; Run SQL, History and Saved runs
+/// all follow it. The choice is written to selection.json, so a refresh or a new tab keeps it.
 /// </summary>
-public class Session(ConnectionStore store)
+public class Session(ConnectionStore store, IWebHostEnvironment env)
 {
+    private readonly string _file = Path.Combine(env.ContentRootPath, "selection.json");
+
     private List<DbConnectionEntry> _connections = store.Load();
-    private string? _selected;
+    private string? _selected = Read(Path.Combine(env.ContentRootPath, "selection.json"));
 
     public event Action? Changed;
 
@@ -23,6 +27,7 @@ public class Session(ConnectionStore store)
         set
         {
             _selected = value;
+            Write(value);
             Changed?.Invoke();
         }
     }
@@ -32,5 +37,29 @@ public class Session(ConnectionStore store)
     {
         _connections = store.Load();
         Changed?.Invoke();
+    }
+
+    private static string? Read(string file)
+    {
+        try
+        {
+            return File.Exists(file) ? JsonSerializer.Deserialize<string>(File.ReadAllText(file)) : null;
+        }
+        catch
+        {
+            return null;   // an unreadable preference just means "no preference"
+        }
+    }
+
+    private void Write(string? name)
+    {
+        try
+        {
+            File.WriteAllText(_file, JsonSerializer.Serialize(name));
+        }
+        catch (IOException)
+        {
+            // two tabs switching at once is harmless; the next switch wins
+        }
     }
 }
