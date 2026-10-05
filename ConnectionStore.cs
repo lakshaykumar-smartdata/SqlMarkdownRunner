@@ -6,7 +6,9 @@ public record DbConnectionEntry(
     string Name,
     string ConnectionString,
     int TimeoutSeconds = 60,
-    bool AutoSaveMarkdown = true);
+    bool AutoSaveMarkdown = true,
+    bool IsProduction = false,
+    bool IsActive = true);
 
 /// <summary>Connections persisted as a plain JSON file next to the app, hand-editable.</summary>
 public class ConnectionStore(IWebHostEnvironment env)

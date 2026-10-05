@@ -24,8 +24,18 @@
     }
     else
     {
-        <MudButton Variant="Variant.Outlined" OnClick="StartEdit" Disabled="@(_definition is null)"
-                   StartIcon="@Icons.Material.Outlined.Edit">Edit</MudButton>
+        @if (_entry?.IsProduction == true)
+        {
+            <MudTooltip Text="This connection is marked production">
+                <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
+                         Icon="@Icons.Material.Outlined.Lock">read-only</MudChip>
+            </MudTooltip>
+        }
+        else
+        {
+            <MudButton Variant="Variant.Outlined" OnClick="StartEdit" Disabled="@(_definition is null)"
+                       StartIcon="@Icons.Material.Outlined.Edit">Edit</MudButton>
+        }
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CopyAsync"
                    Disabled="@(_definition is null)"
                    StartIcon="@Icons.Material.Outlined.ContentCopy">Copy definition</MudButton>
@@ -99,6 +109,7 @@ else if (_definition is not null)
     private async Task SaveAsync()
     {
         if (_entry is null || string.IsNullOrWhiteSpace(_draft)) return;
+        if (_entry.IsProduction) { _error = $"{_entry.Name} is marked production and is read-only."; return; }
 
         var ok = await Dialogs.ShowMessageBoxAsync(
             "Save to the database?",

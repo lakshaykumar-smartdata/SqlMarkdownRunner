@@ -26,6 +26,8 @@ else
             <MudTh>Server / database</MudTh>
             <MudTh Style="width:6rem">Timeout</MudTh>
             <MudTh Style="width:7rem">Auto-save</MudTh>
+            <MudTh Style="width:6rem">Prod</MudTh>
+            <MudTh Style="width:6rem">Active</MudTh>
             <MudTh Style="width:1%" />
         </HeaderContent>
         <RowTemplate>
@@ -36,6 +38,17 @@ else
                 <MudIcon Size="Size.Small"
                          Color="@(context.AutoSaveMarkdown ? Color.Success : Color.Default)"
                          Icon="@(context.AutoSaveMarkdown ? Icons.Material.Outlined.CheckCircle : Icons.Material.Outlined.DoNotDisturbOn)" />
+            </MudTd>
+            <MudTd>
+                @if (context.IsProduction)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined">read-only</MudChip>
+                }
+            </MudTd>
+            <MudTd>
+                <MudIcon Size="Size.Small"
+                         Color="@(context.IsActive ? Color.Success : Color.Default)"
+                         Icon="@(context.IsActive ? Icons.Material.Outlined.CheckCircle : Icons.Material.Outlined.VisibilityOff)" />
             </MudTd>
             <MudTd Class="nowrap">
                 <MudTooltip Text="Edit">
@@ -107,6 +120,13 @@ else
                          Label="Auto-save markdown of every run" />
         </MudStack>
 
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="4" Wrap="Wrap.Wrap">
+            <MudCheckBox @bind-Value="_isProduction" Size="Size.Small" Dense="true" Color="Color.Error"
+                         Label="Production — read-only, refuse anything that writes" />
+            <MudCheckBox @bind-Value="_isActive" Size="Size.Small" Dense="true"
+                         Label="Active — show in the connection picker" />
+        </MudStack>
+
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save"
                        StartIcon="@Icons.Material.Outlined.Save">Save</MudButton>
@@ -131,6 +151,8 @@ else
     private bool _statusOk, _testing;
     private int _timeout = 60;
     private bool _autoSave = true;
+    private bool _isProduction;
+    private bool _isActive = true;
 
     protected override void OnInitialized() => _connections = Store.Load();
 
@@ -166,6 +188,7 @@ else
     {
         (_editingOriginal, _name, _status) = (c.Name, c.Name, null);
         (_timeout, _autoSave) = (c.TimeoutSeconds, c.AutoSaveMarkdown);
+        (_isProduction, _isActive) = (c.IsProduction, c.IsActive);
         ConnectionString = c.ConnectionString;
     }
 
@@ -195,7 +218,8 @@ else
             return;
         }
 
-        var entry = new DbConnectionEntry(_name.Trim(), _connectionString.Trim(), _timeout, _autoSave);
+        var entry = new DbConnectionEntry(
+            _name.Trim(), _connectionString.Trim(), _timeout, _autoSave, _isProduction, _isActive);
         var index = _editingOriginal is null ? -1 : _connections.FindIndex(c => c.Name == _editingOriginal);
         if (index >= 0) _connections[index] = entry; else _connections.Add(entry);
 
@@ -236,6 +260,7 @@ else
     {
         (_editingOriginal, _name, _connectionString, _status) = (null, "", "", null);
         (_timeout, _autoSave) = (60, true);
+        (_isProduction, _isActive) = (false, true);
         _builder = new SqlConnectionStringBuilder();
     }
 }

@@ -15,11 +15,13 @@ public class Session(ConnectionStore store, IWebHostEnvironment env)
 
     public event Action? Changed;
 
-    public IReadOnlyList<DbConnectionEntry> Connections => _connections;
+    /// <summary>Only the active ones; the Connections page is where a deactivated one comes back.</summary>
+    public IReadOnlyList<DbConnectionEntry> Connections =>
+        _connections.Where(c => c.IsActive).ToList();
 
     /// <summary>Falls back to the first connection, so a page always has something to run against.</summary>
     public DbConnectionEntry? Current =>
-        _connections.FirstOrDefault(c => c.Name == _selected) ?? _connections.FirstOrDefault();
+        Connections.FirstOrDefault(c => c.Name == _selected) ?? Connections.FirstOrDefault();
 
     public string? Name
     {

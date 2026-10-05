@@ -270,6 +270,25 @@ public partial class SqlRunner
             .ToList();
     }
 
+    [GeneratedRegex(
+        @"\b(insert|update|delete|merge|truncate|drop|alter|create|grant|revoke|deny)\b",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex WriteKeyword();
+
+    /// <summary>
+    /// The writing statements in a script, for connections marked read-only. EXEC is not listed:
+    /// whether a procedure writes cannot be told from the call site.
+    /// </summary>
+    public static List<string> WriteStatements(string sql)
+    {
+        var clean = CommentsAndLiterals().Replace(sql, m => new string(' ', m.Length));
+
+        return WriteKeyword().Matches(clean)
+            .Select(m => m.Value.ToUpperInvariant())
+            .Distinct()
+            .ToList();
+    }
+
     [GeneratedRegex(@"\bCREATE\b", RegexOptions.IgnoreCase)]
     private static partial Regex CreateKeyword();
 

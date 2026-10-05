@@ -45,7 +45,7 @@
                 @if (Session.Current is { } c)
                 {
                     <MudText Typo="Typo.caption" Class="mud-text-secondary">
-                        timeout @c.TimeoutSeconds s · auto-save @(c.AutoSaveMarkdown ? "on" : "off")
+                        timeout @c.TimeoutSeconds s · auto-save @(c.AutoSaveMarkdown ? "on" : "off")@(c.IsProduction ? " · read-only" : "")
                     </MudText>
                 }
             </MudStack>
@@ -225,6 +225,7 @@
     private async Task RunAsync()
     {
         if (Session.Current is not { } entry || string.IsNullOrWhiteSpace(_sql)) return;
+        if (!await AllowedOnThisConnectionAsync(entry)) return;
         if (!await ConfirmUnfilteredWritesAsync()) return;
 
         _running = true;
@@ -240,6 +241,24 @@
 
         History.Add(entry.Name, _sql);
         if (entry.AutoSaveMarkdown && _markdown is not null) Runs.Save(entry.Name, _markdown);
+    }
+
+    /// <summary>A connection marked production refuses anything that writes, with no override.</summary>
+    private async Task<bool> AllowedOnThisConnectionAsync(DbConnectionEntry entry)
+    {
+        if (!entry.IsProduction) return true;
+
+        var writes = SqlRunner.WriteStatements(_sql);
+        if (writes.Count == 0) return true;
+
+        await Dialogs.ShowMessageBoxAsync(
+            "This connection is read-only",
+            (MarkupString)($"<strong>{entry.Name}</strong> is marked as production, so it only runs " +
+                           $"queries that read.<br><br>Found: <code>{string.Join("</code>, <code>", writes)}</code>" +
+                           "<br><br>Untick Production on the Connections page if that is wrong."),
+            yesText: "OK");
+
+        return false;
     }
 
     /// <summary>An UPDATE or DELETE with no WHERE hits every row, so make the user say yes first.</summary>

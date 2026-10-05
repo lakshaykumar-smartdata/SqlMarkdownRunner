@@ -71,6 +71,18 @@ public static class SelfTest
             == "/* CREATE */ ALTER FUNCTION dbo.f() RETURNS int AS BEGIN RETURN 1 END");
         Debug.Assert(SqlRunner.ToAlter("CREATE PROC dbo.x AS SELECT NCREATE").EndsWith("SELECT NCREATE"));
 
+        Debug.Assert(SqlRunner.WriteStatements("SELECT * FROM t").Count == 0);
+        Debug.Assert(SqlRunner.WriteStatements("EXEC dbo.usp_Read @id = 1").Count == 0);   // cannot be judged
+        Debug.Assert(SqlRunner.WriteStatements("UPDATE t SET a = 1").Single() == "UPDATE");
+        Debug.Assert(SqlRunner.WriteStatements("-- update nothing\nSELECT 1").Count == 0);
+        Debug.Assert(SqlRunner.WriteStatements("SELECT QdropQ AS x".Replace("Q", "'")).Count == 0);
+        Debug.Assert(SqlRunner.WriteStatements("DELETE FROM a; INSERT INTO b VALUES (1)").Count == 2);
+
+        var legacyFlags = JsonSerializer.Deserialize<DbConnectionEntry>(
+            """{"Name":"a","ConnectionString":"b"}""")!;
+        Debug.Assert(!legacyFlags.IsProduction, "a connection must not become production by default");
+        Debug.Assert(legacyFlags.IsActive, "an existing connection must stay visible");
+
         Console.WriteLine("self-test: OK");
     }
 }

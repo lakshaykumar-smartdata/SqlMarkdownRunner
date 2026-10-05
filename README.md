@@ -5,7 +5,7 @@ get the query + results back as one markdown document to copy or download into a
 
 The connection is picked once in the header; Run SQL, History and Saved runs all follow it.
 
-- **Connections** page → saved to `connections.json` in this folder (hand-editable, gitignored). Each connection carries its own query timeout and auto-save setting.
+- **Connections** page → saved to `connections.json` in this folder (hand-editable, gitignored). Each connection carries its own query timeout, auto-save setting, a production flag (refuses anything that writes) and an active flag (hides it from the picker).
 - **Run SQL** page → run, copy/download the markdown. The side panel lists the database's tables, views, procedures and functions; drag a name into the editor. Expand a table for its columns; the eye beside a procedure or function opens its definition on its own page, where it can be copied or edited. Saving runs ALTER against the live database and backs the previous definition up to Saved runs first. Listings are cached per connection in `objects.json` until you hit Refresh.
 - **Saved runs** page → every run auto-saved to `wwwroot/sql-queries/<connection>/`; browse, preview, copy or download. Turn it off per connection on the Connections page.
 - **History** page → the last 200 runs per connection, saved to `history.json` (also gitignored). Open reloads a query into the editor.
