@@ -78,7 +78,8 @@ public partial class SqlRunner
 
     /// <summary>Runs the script and returns the whole session as one markdown document.</summary>
     public static async Task<string> RunAsMarkdownAsync(
-        DbConnectionEntry entry, string sql, int commandTimeoutSeconds, CancellationToken ct = default)
+        DbConnectionEntry entry, string sql, int commandTimeoutSeconds,
+        IReadOnlyList<(string Name, string? Value)>? arguments = null, CancellationToken ct = default)
     {
         var md = new StringBuilder();
         var sw = Stopwatch.StartNew();
@@ -102,7 +103,7 @@ public partial class SqlRunner
                 md.AppendLine(batches[i]);
                 md.AppendLine("```");
                 md.AppendLine();
-                await AppendBatchResultAsync(conn, batches[i], commandTimeoutSeconds, md, ct);
+                await AppendBatchResultAsync(conn, batches[i], commandTimeoutSeconds, arguments, md, ct);
                 md.AppendLine();
             }
         }
@@ -117,9 +118,15 @@ public partial class SqlRunner
     }
 
     private static async Task AppendBatchResultAsync(
-        SqlConnection conn, string batch, int timeout, StringBuilder md, CancellationToken ct)
+        SqlConnection conn, string batch, int timeout,
+        IReadOnlyList<(string Name, string? Value)>? arguments, StringBuilder md, CancellationToken ct)
     {
         await using var cmd = new SqlCommand(batch, conn) { CommandTimeout = timeout };
+
+        // Sent as strings and left to SQL Server to convert, so the caller does not have to
+        // quote or format anything. An empty box means NULL.
+        foreach (var (name, value) in arguments ?? [])
+            cmd.Parameters.AddWithValue(name, string.IsNullOrWhiteSpace(value) ? DBNull.Value : value);
         var messages = new List<string>();
         void OnInfo(object s, SqlInfoMessageEventArgs e) => messages.Add(e.Message);
         conn.InfoMessage += OnInfo;
@@ -317,6 +324,64 @@ public partial class SqlRunner
         await using var cmd = new SqlCommand(ToAlter(definition), conn)
             { CommandTimeout = entry.TimeoutSeconds };
         await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    public record RoutineInfo(string Type, List<RoutineParam> Parameters)
+    {
+        public bool IsFunction => Type is "FN" or "IF" or "TF";
+    }
+
+    public record RoutineParam(string Name, string Type, bool IsOutput);
+
+    /// <summary>The object's type and parameter list, for building a call to it.</summary>
+    public static async Task<RoutineInfo?> GetRoutineAsync(
+        DbConnectionEntry entry, string name, CancellationToken ct = default)
+    {
+        const string sql = """
+            SELECT o.type, p.name, t.name AS type_name, p.max_length, p.precision, p.scale, p.is_output
+            FROM sys.objects o
+            LEFT JOIN sys.parameters p ON p.object_id = o.object_id AND p.parameter_id > 0
+            LEFT JOIN sys.types t ON t.user_type_id = p.user_type_id
+            WHERE o.object_id = OBJECT_ID(@name)
+            ORDER BY p.parameter_id;
+            """;
+
+        await using var conn = new SqlConnection(entry.ConnectionString);
+        await conn.OpenAsync(ct);
+
+        await using var cmd = new SqlCommand(sql, conn) { CommandTimeout = 30 };
+        cmd.Parameters.AddWithValue("@name", name);
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+        string? type = null;
+        var parameters = new List<RoutineParam>();
+        while (await reader.ReadAsync(ct))
+        {
+            type ??= reader.GetString(0).TrimEnd();
+            if (reader.IsDBNull(1)) continue;   // the LEFT JOIN row for a routine with no parameters
+
+            parameters.Add(new RoutineParam(
+                reader.GetString(1),
+                FormatType(reader.GetString(2), reader.GetInt16(3), reader.GetByte(4), reader.GetByte(5)),
+                reader.GetBoolean(6)));
+        }
+
+        return type is null ? null : new RoutineInfo(type, parameters);
+    }
+
+    /// <summary>The statement that calls a routine, with one placeholder per parameter.</summary>
+    public static string CallSyntax(RoutineInfo routine, string name)
+    {
+        var named = string.Join(", ", routine.Parameters.Select(p => $"{p.Name} = {p.Name}"));
+        var positional = string.Join(", ", routine.Parameters.Select(p => p.Name));
+
+        return routine.Type switch
+        {
+            "FN" => $"SELECT {name}({positional}) AS Result;",
+            "IF" or "TF" => $"SELECT * FROM {name}({positional});",
+            _ => routine.Parameters.Count == 0 ? $"EXEC {name};" : $"EXEC {name} {named};"
+        };
     }
 
     /// <summary>The CREATE text of a procedure or function. Null when it is encrypted.</summary>

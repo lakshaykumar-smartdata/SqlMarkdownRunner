@@ -36,6 +36,10 @@
             <MudButton Variant="Variant.Outlined" OnClick="StartEdit" Disabled="@(_definition is null)"
                        StartIcon="@Icons.Material.Outlined.Edit">Edit</MudButton>
         }
+        <MudButton Variant="Variant.Outlined" OnClick="ToggleRunner" Disabled="@(_routine is null)"
+                   StartIcon="@Icons.Material.Filled.PlayArrow">
+            @(_showRunner ? "Hide run" : "Execute")
+        </MudButton>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CopyAsync"
                    Disabled="@(_definition is null)"
                    StartIcon="@Icons.Material.Outlined.ContentCopy">Copy definition</MudButton>
@@ -45,6 +49,55 @@
 @if (_error is not null)
 {
     <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Dense="true" Class="mb-4">@_error</MudAlert>
+}
+
+@if (_showRunner && _routine is not null)
+{
+    <MudPaper Elevation="0" Outlined="true" Class="pa-4 mb-4">
+        <MudText Typo="Typo.subtitle2" Class="mb-3">Run this @(_routine.IsFunction ? "function" : "procedure")</MudText>
+
+        @if (_routine.Parameters.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">It takes no parameters.</MudText>
+        }
+        else
+        {
+            <MudGrid Spacing="3" Class="mb-2">
+                @foreach (var p in _routine.Parameters)
+                {
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudTextField @bind-Value="_arguments[p.Name]" T="string"
+                                      Label="@p.Name" HelperText="@(p.IsOutput ? p.Type + ", OUTPUT" : p.Type)"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense"
+                                      Placeholder="NULL" Class="mono" />
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+
+        <pre class="call-preview">@SqlRunner.CallSyntax(_routine, Name!)</pre>
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mt-3">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RunAsync" Disabled="_running"
+                       StartIcon="@Icons.Material.Filled.PlayArrow">
+                @(_running ? "Running…" : "Run")
+            </MudButton>
+            @if (_result is not null)
+            {
+                <MudButton Variant="Variant.Outlined" OnClick="CopyResultAsync"
+                           StartIcon="@Icons.Material.Outlined.ContentCopy">Copy markdown</MudButton>
+            }
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                empty box = NULL · timeout @_entry!.TimeoutSeconds s
+            </MudText>
+        </MudStack>
+
+        @if (_result is not null)
+        {
+            <MudDivider Class="my-4" />
+            <div class="rendered">@MarkdownView.Render(_result)</div>
+        }
+    </MudPaper>
 }
 
 @if (_editing)
@@ -75,7 +128,10 @@ else if (_definition is not null)
     private DbConnectionEntry? _entry;
     private string? _definition, _error;
     private string _draft = "";
-    private bool _editing, _saving;
+    private bool _editing, _saving, _showRunner, _running;
+    private SqlRunner.RoutineInfo? _routine;
+    private readonly Dictionary<string, string> _arguments = [];
+    private string? _result;
 
     protected override async Task OnInitializedAsync()
     {
@@ -87,6 +143,10 @@ else if (_definition is not null)
         }
 
         await LoadAsync();
+        _routine = await SqlRunner.GetRoutineAsync(_entry, Name!);
+
+        foreach (var p in _routine?.Parameters ?? [])
+            _arguments[p.Name] = "";
     }
 
     private async Task LoadAsync()
@@ -150,6 +210,34 @@ else if (_definition is not null)
                        + "```sql\n" + _definition + "\n```\n";
 
         Runs.Save(_entry.Name, markdown, Name);
+    }
+
+    private void ToggleRunner() => _showRunner = !_showRunner;
+
+    private async Task RunAsync()
+    {
+        if (_entry is null || _routine is null) return;
+
+        _running = true;
+        try
+        {
+            var args = _routine.Parameters
+                .Select(p => (p.Name, (string?)_arguments.GetValueOrDefault(p.Name)))
+                .ToList();
+
+            _result = await SqlRunner.RunAsMarkdownAsync(
+                _entry, SqlRunner.CallSyntax(_routine, Name!), _entry.TimeoutSeconds, args);
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private async Task CopyResultAsync()
+    {
+        await JS.InvokeVoidAsync("smr.copy", _result);
+        Snackbar.Add("Markdown copied", Severity.Success);
     }
 
     private async Task CopyAsync()

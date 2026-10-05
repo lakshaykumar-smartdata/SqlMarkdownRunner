@@ -141,3 +141,6 @@ pre.definition-full { margin: 0; white-space: pre; overflow-x: auto; font-size: 
 .connection-select.prod:hover .mud-input-outlined { background: rgba(248, 113, 113, .3); }
 .connection-select.prod .mud-input-adornment .mud-icon-root { color: #fca5a5 !important; }
 .prod-badge { font-weight: 700; letter-spacing: .02em; }
+
+/* the generated call, shown above the Run button */
+pre.call-preview { margin: 0; padding: .6rem .8rem; background: #0f172a; color: #e2e8f0; border-radius: 8px; font-size: .78rem; overflow-x: auto; white-space: pre-wrap; }
