@@ -111,7 +111,10 @@
                                 @if (o.Columns.Count > 0)
                                 {
                                     <details>
-                                        <summary class="objects-item" draggable="true" data-drag="@o.DragText" title="@o.DragText">@o.Name</summary>
+                                        <summary class="objects-item" draggable="true" data-drag="@o.DragText" title="@o.DragText">
+                                            <span class="objects-name">@o.Name</span>
+                                            <span class="objects-modified" title="@Modified(o)">@ModifiedShort(o)</span>
+                                        </summary>
                                         <div class="objects-cols">
                                             <div class="objects-actions">
                                                 <button class="copy-schema" @onclick="() => CopySchemaAsync(o)">
@@ -133,7 +136,10 @@
                                 else
                                 {
                                     <div class="objects-row">
-                                        <div class="objects-item" draggable="true" data-drag="@o.DragText" title="@o.DragText">@o.Name</div>
+                                        <div class="objects-item" draggable="true" data-drag="@o.DragText" title="@o.DragText">
+                                            <span class="objects-name">@o.Name</span>
+                                            <span class="objects-modified" title="@Modified(o)">@ModifiedShort(o)</span>
+                                        </div>
                                         <a class="objects-eye" href="@DefinitionUrl(o)" target="_blank" rel="noopener"
                                            title="View the definition in a new tab">
                                             <MudIcon Icon="@Icons.Material.Outlined.Visibility" Size="Size.Small" />
@@ -320,6 +326,13 @@
     {
         if (!_collapsedKinds.Add(kind)) _collapsedKinds.Remove(kind);
     }
+
+    /// <summary>modify_date arrives as UTC, so the browser machine decides what it reads as.</summary>
+    private static string Modified(DbObject o) =>
+        $"last changed {o.ModifiedUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}";
+
+    private static string ModifiedShort(DbObject o) =>
+        o.ModifiedUtc.ToLocalTime().ToString("MMM d, HH:mm");
 
     private string DefinitionUrl(DbObject o) =>
         $"definition?connection={Uri.EscapeDataString(Session.Name ?? "")}&name={Uri.EscapeDataString(o.Name)}";

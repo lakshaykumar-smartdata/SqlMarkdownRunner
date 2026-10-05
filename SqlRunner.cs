@@ -8,7 +8,12 @@ namespace SqlMarkdownRunner;
 
 public record DbColumn(string Name, string Type, bool Nullable, bool IsPrimaryKey);
 
-public record DbObject(string Kind, string Name, string DragText, List<DbColumn> Columns);
+public record DbObject(
+    string Kind,
+    string Name,
+    string DragText,
+    List<DbColumn> Columns,
+    DateTime ModifiedUtc);
 
 public partial class SqlRunner
 {
@@ -205,7 +210,8 @@ public partial class SqlRunner
     public static async Task<List<DbObject>> ListObjectsAsync(DbConnectionEntry entry, CancellationToken ct = default)
     {
         const string sql = """
-            SELECT o.object_id, o.type, s.name AS schema_name, o.name
+            SELECT o.object_id, o.type, s.name AS schema_name, o.name,
+                   DATEADD(MINUTE, DATEDIFF(MINUTE, GETDATE(), GETUTCDATE()), o.modify_date) AS modified_utc
             FROM sys.objects o
             JOIN sys.schemas s ON s.schema_id = o.schema_id
             WHERE o.type IN ('U', 'V', 'P', 'FN', 'IF', 'TF') AND o.is_ms_shipped = 0
@@ -239,9 +245,13 @@ public partial class SqlRunner
         await using var cmd = new SqlCommand(sql, conn) { CommandTimeout = 30 };
         await using var reader = await cmd.ExecuteReaderAsync(ct);
 
-        var rows = new List<(int Id, string Type, string Name)>();
+        var rows = new List<(int Id, string Type, string Name, DateTime ModifiedUtc)>();
         while (await reader.ReadAsync(ct))
-            rows.Add((reader.GetInt32(0), reader.GetString(1).TrimEnd(), $"{reader.GetString(2)}.{reader.GetString(3)}"));
+            rows.Add((
+                reader.GetInt32(0),
+                reader.GetString(1).TrimEnd(),
+                $"{reader.GetString(2)}.{reader.GetString(3)}",
+                DateTime.SpecifyKind(reader.GetDateTime(4), DateTimeKind.Utc)));
 
         var parameters = new Dictionary<int, List<Param>>();
         await reader.NextResultAsync(ct);
@@ -273,7 +283,8 @@ public partial class SqlRunner
                 Kind(r.Type),
                 r.Name,
                 CallTemplate(r.Type, r.Name, parameters.GetValueOrDefault(r.Id, [])),
-                columns.GetValueOrDefault(r.Id, [])))
+                columns.GetValueOrDefault(r.Id, []),
+                r.ModifiedUtc))
             .ToList();
     }
 
