@@ -9,10 +9,17 @@
 
 <MudText Typo="Typo.h5">Database connections</MudText>
 <MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
-    Stored in <code>@Store.FilePath</code> — edit that file by hand any time
+    Stored in <code>@Store.FilePath</code>, encrypted for this Windows account
 </MudText>
 
-@if (_connections.Count == 0)
+@if (Store.Unreadable)
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Dense="true" Class="mb-4">
+        <code>@Store.FilePath</code> could not be read — most likely it was encrypted by a different
+        Windows account. Saving is disabled so the file is not overwritten. Move it aside to start fresh.
+    </MudAlert>
+}
+else @if (_connections.Count == 0)
 {
     <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true" Class="mb-4">
         No connections yet. Add one below.

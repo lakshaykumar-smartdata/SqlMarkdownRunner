@@ -7,6 +7,9 @@ public record SavedRun(string FileName, DateTime SavedAt, long Bytes);
 /// </summary>
 public class SavedRuns(IWebHostEnvironment env)
 {
+    /// <summary>Nothing else deletes these, so the oldest are trimmed as new ones arrive.</summary>
+    public const int KeepPerConnection = 200;
+
     public string Root { get; } = Path.Combine(env.WebRootPath, "sql-queries");
 
     public string Save(string connection, string markdown, string? label = null)
@@ -17,6 +20,11 @@ public class SavedRuns(IWebHostEnvironment env)
         var stem = label is null ? Safe(connection) : $"{Safe(connection)}-{Safe(label)}";
         var path = Path.Combine(folder, $"{stem}-{DateTime.Now:yyyyMMdd-HHmmss}.md");
         File.WriteAllText(path, markdown);
+
+        foreach (var old in new DirectoryInfo(folder).GetFiles("*.md")
+                     .OrderByDescending(f => f.Name).Skip(KeepPerConnection))
+            old.Delete();
+
         return path;
     }
 
@@ -48,6 +56,13 @@ public class SavedRuns(IWebHostEnvironment env)
     {
         var path = Path.Combine(Root, Safe(connection), Path.GetFileName(fileName));
         if (File.Exists(path)) File.Delete(path);
+    }
+
+    private static void Trim(string folder, int keep)
+    {
+        foreach (var old in new DirectoryInfo(folder).GetFiles("*.md")
+                     .OrderByDescending(f => f.Name).Skip(keep))
+            old.Delete();
     }
 
     private static string Safe(string name) => string.Join("_", name.Split(Path.GetInvalidFileNameChars()));

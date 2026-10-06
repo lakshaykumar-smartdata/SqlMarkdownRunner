@@ -17,6 +17,10 @@
         </MudText>
     </div>
     <MudSpacer />
+    <MudTextField @bind-Value="_filter" T="string" Immediate="true" Clearable="true"
+                  Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:18rem"
+                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
+                  Placeholder="Search the SQL" />
     <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Error"
                StartIcon="@Icons.Material.Outlined.DeleteSweep"
                Disabled="@(_entries.Count == 0)" OnClick="ClearAsync">
@@ -24,15 +28,16 @@
     </MudButton>
 </MudStack>
 
-@if (_entries.Count == 0)
+@if (Matches.Count == 0)
 {
     <MudAlert Severity="Severity.Normal" Variant="Variant.Outlined" Dense="true">
-        Nothing here yet for this connection. Run a query and it will show up.
+        @(_filter == "" ? "Nothing here yet for this connection. Run a query and it will show up."
+                        : "No run matches that search.")
     </MudAlert>
 }
 else
 {
-    <MudTable Items="_entries" Dense="true" Hover="true" Elevation="0" Outlined="true" Breakpoint="Breakpoint.None">
+    <MudTable Items="Matches" Dense="true" Hover="true" Elevation="0" Outlined="true" Breakpoint="Breakpoint.None">
         <HeaderContent>
             <MudTh Style="width:11rem">Run at</MudTh>
             <MudTh>SQL</MudTh>
@@ -57,6 +62,11 @@ else
 
 @code {
     private List<HistoryEntry> _entries = [];
+    private string _filter = "";
+
+    private List<HistoryEntry> Matches => _filter == ""
+        ? _entries
+        : _entries.Where(e => e.Sql.Contains(_filter, StringComparison.OrdinalIgnoreCase)).ToList();
 
     protected override void OnInitialized()
     {

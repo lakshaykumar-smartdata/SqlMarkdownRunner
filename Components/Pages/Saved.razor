@@ -12,15 +12,22 @@
     <div>
         <MudText Typo="Typo.h5">Saved runs</MudText>
         <MudText Typo="Typo.body2" Class="mud-text-secondary">
-            @_files.Count file(s) under <code>@Runs.Root</code>
+            @_matches.Count of @_files.Count file(s) under <code>@Runs.Root</code>
         </MudText>
     </div>
+    <MudSpacer />
+    <MudTextField @bind-Value="_filter" @bind-Value:after="ApplyFilter" T="string"
+                  Immediate="true" DebounceInterval="300" Clearable="true"
+                  Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:20rem"
+                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
+                  Placeholder="Search inside the saved markdown" />
 </MudStack>
 
-@if (_files.Count == 0)
+@if (_matches.Count == 0)
 {
     <MudAlert Severity="Severity.Normal" Variant="Variant.Outlined" Dense="true">
-        Nothing saved yet for this connection. Turn on auto-save for it under Connections.
+        @(_filter == "" ? "Nothing saved yet for this connection. Turn on auto-save for it under Connections."
+                        : "No saved run contains that text.")
     </MudAlert>
 }
 else
@@ -28,7 +35,7 @@ else
     <MudGrid Spacing="3">
         <MudItem xs="12" md="5">
             <MudPaper Elevation="0" Outlined="true" Class="saved-list">
-                @foreach (var f in _files)
+                @foreach (var f in _matches)
                 {
                     <div class="saved-item @(f.FileName == _openFile ? "selected" : "")" @onclick="() => Open(f)">
                         <div class="saved-item-text">
@@ -79,7 +86,8 @@ else
 }
 
 @code {
-    private List<SavedRun> _files = [];
+    private List<SavedRun> _files = [], _matches = [];
+    private string _filter = "";
     private string? _openFile, _markdown;
 
     protected override void OnInitialized()
@@ -100,6 +108,25 @@ else
     {
         _files = Session.Name is null ? [] : Runs.List(Session.Name);
         (_openFile, _markdown) = (null, null);
+        ApplyFilter();
+    }
+
+    /// <summary>
+    /// File names are only timestamps, so the search reads the markdown itself. Debounced,
+    /// since that means opening every file for the connection.
+    /// </summary>
+    private void ApplyFilter()
+    {
+        if (string.IsNullOrWhiteSpace(_filter))
+        {
+            _matches = _files;
+            return;
+        }
+
+        _matches = _files
+            .Where(f => (Runs.Read(Session.Name!, f.FileName) ?? "")
+                .Contains(_filter, StringComparison.OrdinalIgnoreCase))
+            .ToList();
     }
 
     private void Open(SavedRun f)

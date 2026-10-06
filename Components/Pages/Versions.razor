@@ -3,6 +3,8 @@
 @using DiffPlex.DiffBuilder.Model
 @inject ObjectVersions Store
 @inject IJSRuntime JS
+@inject ConnectionStore Connections
+@inject IDialogService Dialogs
 @inject ISnackbar Snackbar
 
 <PageTitle>History — @Name</PageTitle>
@@ -53,6 +55,11 @@ else
                 <MudIconButton Icon="@Icons.Material.Outlined.ContentCopy" Size="Size.Small"
                                Color="Color.Primary" OnClick="CopyNewerAsync" />
             </MudTooltip>
+            <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="RestoreAsync"
+                       Disabled="@(_restoring || _readOnly)"
+                       StartIcon="@Icons.Material.Outlined.Restore">
+                @(_readOnly ? "Read-only" : _restoring ? "Restoring…" : "Restore the older one")
+            </MudButton>
         </MudStack>
     </MudPaper>
 
@@ -84,9 +91,13 @@ else
     private string? _from, _to;
     private DiffPaneModel? _diff;
     private int _added, _removed;
+    private bool _restoring;
+    private DbConnectionEntry? _entry;
+    private bool _readOnly => _entry?.IsProduction != false;
 
     protected override void OnInitialized()
     {
+        _entry = Connections.Load().FirstOrDefault(c => c.Name == Connection);
         _versions = Store.List(Connection ?? "", Name ?? "");
         if (_versions.Count < 2) return;
 
@@ -125,6 +136,42 @@ else
 
     private string DefinitionUrl =>
         $"definition?connection={Uri.EscapeDataString(Connection ?? "")}&name={Uri.EscapeDataString(Name ?? "")}";
+
+    /// <summary>Puts the older text back, which is itself recorded as a new version.</summary>
+    private async Task RestoreAsync()
+    {
+        if (_entry is null || _readOnly) return;
+
+        var older = Store.Read(Connection!, Name!, _from!);
+        if (older is null) return;
+
+        var ok = await Dialogs.ShowMessageBoxAsync(
+            "Restore this version?",
+            (MarkupString)($"<code>{Name}</code> on <strong>{_entry.Name}</strong> goes back to the " +
+                           "version on the left. The current text is kept as a version too."),
+            yesText: "Restore", cancelText: "Cancel");
+
+        if (ok != true) return;
+
+        _restoring = true;
+        try
+        {
+            await SqlRunner.AlterAsync(_entry, older);
+            Store.Save(Connection!, Name!, older);
+
+            _versions = Store.List(Connection!, Name!);
+            Select(_versions[1].FileName, _versions[0].FileName);
+            Snackbar.Add($"{Name} restored", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _restoring = false;
+        }
+    }
 
     private async Task CopyNewerAsync()
     {

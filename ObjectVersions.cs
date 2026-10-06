@@ -8,6 +8,9 @@ public record ObjectVersion(string FileName, DateTime SavedAt, long Bytes);
 /// </summary>
 public class ObjectVersions(IWebHostEnvironment env)
 {
+    /// <summary>Plenty of history per object without the folder growing without end.</summary>
+    public const int KeepPerObject = 100;
+
     public string Root { get; } = Path.Combine(env.WebRootPath, "object-versions");
 
     public string Save(string connection, string objectName, string definition)
@@ -23,6 +26,11 @@ public class ObjectVersions(IWebHostEnvironment env)
             when = when.AddMilliseconds(1);
 
         File.WriteAllText(path, definition);
+
+        foreach (var old in new DirectoryInfo(folder).GetFiles("*.sql")
+                     .OrderByDescending(f => f.Name).Skip(KeepPerObject))
+            old.Delete();
+
         return path;
     }
 
