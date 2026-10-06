@@ -99,6 +99,14 @@ public static class SelfTest
         Debug.Assert(book.Worksheet(1).Cell("B3").IsEmpty(), "a NULL belongs in an empty cell");
         Debug.Assert(book.Worksheet(1).Row(1).Style.Font.Bold);
 
+        // A DDL column holds far more than Excel allows in one cell; it is trimmed, not thrown on.
+        var huge = new ResultSet("ddl", ["ddl"], [[new string('x', 40000)]]);
+        using var trimmed = new XLWorkbook(new MemoryStream(ResultWorkbook.Build([huge])));
+        var cell = trimmed.Worksheet(1).Cell("A2").GetString();
+
+        Debug.Assert(cell.Length == 32_767, "a cell must not exceed what Excel accepts");
+        Debug.Assert(cell.EndsWith("[truncated]"), "trimming must be visible, not silent");
+
         Console.WriteLine("self-test: OK");
     }
 }

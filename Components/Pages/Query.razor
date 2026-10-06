@@ -383,12 +383,20 @@
 
     private async Task DownloadWorkbook()
     {
-        var bytes = ResultWorkbook.Build(_resultSets);
+        try
+        {
+            var bytes = ResultWorkbook.Build(_resultSets);
 
-        await JS.InvokeVoidAsync("smr.downloadBytes",
-            $"sql-run-{DateTime.Now:yyyyMMdd-HHmmss}.xlsx",
-            Convert.ToBase64String(bytes),
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            await JS.InvokeVoidAsync("smr.downloadBytes",
+                $"sql-run-{DateTime.Now:yyyyMMdd-HHmmss}.xlsx",
+                Convert.ToBase64String(bytes),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        }
+        catch (Exception ex)
+        {
+            // A failed export should say so, not take the circuit down with it.
+            Snackbar.Add($"Export failed: {ex.Message}", Severity.Error);
+        }
     }
 
     private Task Download() =>
