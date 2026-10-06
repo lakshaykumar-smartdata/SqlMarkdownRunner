@@ -165,3 +165,14 @@ pre.call-preview { margin: 0; padding: .6rem .8rem; background: #0f172a; color: 
 .saved-empty { min-height: 14rem; }
 .saved-markdown { max-height: calc(100vh - 18rem); overflow: auto; }
 .saved-open-name { font-family: "Cascadia Mono", Consolas, monospace; font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* version diff, read like a unified patch */
+.diff-paper { overflow: hidden; }
+.diff { font-family: "Cascadia Mono", Consolas, monospace; font-size: .78rem; line-height: 1.55; max-height: calc(100vh - 20rem); overflow: auto; }
+.diff-line { display: flex; gap: .5rem; padding: 0 .75rem; white-space: pre; }
+.diff-gutter { flex: 0 0 1ch; color: var(--muted); user-select: none; }
+.diff-text { flex: 1 1 auto; }
+.diff-line.added { background: #ecfdf3; color: #05603a; }
+.diff-line.removed { background: #fef3f2; color: #b42318; }
+.diff-counts .added { color: #067647; font-weight: 700; }
+.diff-counts .removed { color: #b42318; font-weight: 700; }

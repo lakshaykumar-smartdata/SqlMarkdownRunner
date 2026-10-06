@@ -11,6 +11,7 @@ builder.Services.AddSingleton<ConnectionStore>();
 builder.Services.AddSingleton<HistoryStore>();
 builder.Services.AddSingleton<ObjectCache>();
 builder.Services.AddSingleton<SavedRuns>();
+builder.Services.AddSingleton<ObjectVersions>();
 builder.Services.AddScoped<Session>();
 builder.Services.AddMudServices();
 builder.Services.AddRazorComponents()

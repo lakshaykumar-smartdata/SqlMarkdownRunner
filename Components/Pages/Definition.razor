@@ -1,6 +1,6 @@
 @page "/definition"
 @inject ConnectionStore Store
-@inject SavedRuns Runs
+@inject ObjectVersions Versions
 @inject IJSRuntime JS
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
@@ -36,6 +36,10 @@
             <MudButton Variant="Variant.Outlined" OnClick="StartEdit" Disabled="@(_definition is null)"
                        StartIcon="@Icons.Material.Outlined.Edit">Edit</MudButton>
         }
+        <MudButton Variant="Variant.Text" Href="@VersionsUrl" Disabled="@(_versionCount == 0)"
+                   StartIcon="@Icons.Material.Outlined.History">
+            History (@_versionCount)
+        </MudButton>
         <MudButton Variant="Variant.Outlined" OnClick="ToggleRunner" Disabled="@(_routine is null)"
                    StartIcon="@Icons.Material.Filled.PlayArrow">
             @(_showRunner ? "Hide run" : "Execute")
@@ -103,8 +107,8 @@
 @if (_editing)
 {
     <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="mb-3">
-        Saving runs ALTER against <strong>@Connection</strong> straight away. The current definition is
-        backed up to Saved runs first.
+        Saving runs ALTER against <strong>@Connection</strong> straight away. Both the current and the
+        new definition are kept as .sql versions you can diff afterwards.
     </MudAlert>
 
     <MudTextField @bind-Value="_draft" T="string" Variant="Variant.Outlined" Margin="Margin.Dense"
@@ -127,6 +131,7 @@ else if (_definition is not null)
 
     private DbConnectionEntry? _entry;
     private string? _definition, _error;
+    private int _versionCount;
     private string _draft = "";
     private bool _editing, _saving, _showRunner, _running;
     private SqlRunner.RoutineInfo? _routine;
@@ -147,6 +152,8 @@ else if (_definition is not null)
 
         foreach (var p in _routine?.Parameters ?? [])
             _arguments[p.Name] = "";
+
+        _versionCount = Versions.List(Connection!, Name!).Count;
     }
 
     private async Task LoadAsync()
@@ -175,7 +182,7 @@ else if (_definition is not null)
             "Save to the database?",
             (MarkupString)($"<code>{Name}</code> will be altered on <strong>{_entry.Name}</strong> " +
                            "immediately, and this cannot be undone.<br><br>" +
-                           "The definition as it stands now is backed up to Saved runs first."),
+                                          "The definition as it stands now is kept as a version you can diff and restore from."),
             yesText: "Save", cancelText: "Cancel");
 
         if (ok != true) return;
@@ -183,8 +190,11 @@ else if (_definition is not null)
         _saving = true;
         try
         {
-            Backup();
+            SaveBaseline();   // the pre-change text is the part that cannot be recreated
             await SqlRunner.AlterAsync(_entry, _draft);
+
+            Versions.Save(Connection!, Name!, _draft);
+            _versionCount = Versions.List(Connection!, Name!).Count;
 
             _editing = false;
             await LoadAsync();   // show what is actually stored now
@@ -200,17 +210,18 @@ else if (_definition is not null)
         }
     }
 
-    /// <summary>Keeps the pre-change text, so a bad edit is always one copy-paste from recovery.</summary>
-    private void Backup()
+    /// <summary>
+    /// The first edit also stores what was there beforehand, so the oldest version is a real
+    /// baseline rather than the first thing this app wrote.
+    /// </summary>
+    private void SaveBaseline()
     {
-        var markdown = $"# Definition backup — {Name}\n\n"
-                       + $"- **Connection:** {_entry!.Name} — `{SqlRunner.Describe(_entry.ConnectionString)}`\n"
-                       + $"- **Taken (local):** {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n"
-                       + "- **Reason:** definition about to be altered from this app\n\n"
-                       + "```sql\n" + _definition + "\n```\n";
-
-        Runs.Save(_entry.Name, markdown, Name);
+        if (_versionCount == 0 && _definition is not null)
+            Versions.Save(Connection!, Name!, _definition);
     }
+
+    private string VersionsUrl =>
+        $"versions?connection={Uri.EscapeDataString(Connection ?? "")}&name={Uri.EscapeDataString(Name ?? "")}";
 
     private void ToggleRunner() => _showRunner = !_showRunner;
 

@@ -1,0 +1,134 @@
+@page "/versions"
+@using DiffPlex.DiffBuilder
+@using DiffPlex.DiffBuilder.Model
+@inject ObjectVersions Store
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>History — @Name</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-4">
+    <div>
+        <MudText Typo="Typo.h5">@Name</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            @Connection · @_versions.Count version(s) in <code>@Store.Root</code>
+        </MudText>
+    </div>
+    <MudSpacer />
+    <MudButton Variant="Variant.Outlined" Href="@DefinitionUrl"
+               StartIcon="@Icons.Material.Outlined.ArrowBack">Back to definition</MudButton>
+</MudStack>
+
+@if (_versions.Count < 2)
+{
+    <MudAlert Severity="Severity.Normal" Variant="Variant.Outlined" Dense="true">
+        Nothing to compare yet — a diff appears once this object has been saved from here twice.
+    </MudAlert>
+}
+else
+{
+    <MudPaper Elevation="0" Outlined="true" Class="pa-4 mb-4">
+        <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+            <MudSelect T="string" Value="_from" ValueChanged="@(v => Select(v, _to))" Label="From (older)"
+                       Dense="true" Margin="Margin.Dense" Variant="Variant.Outlined" Style="min-width:16rem">
+                @foreach (var v in _versions)
+                {
+                    <MudSelectItem T="string" Value="@v.FileName">@Label(v)</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudSelect T="string" Value="_to" ValueChanged="@(v => Select(_from, v))" Label="To (newer)"
+                       Dense="true" Margin="Margin.Dense" Variant="Variant.Outlined" Style="min-width:16rem">
+                @foreach (var v in _versions)
+                {
+                    <MudSelectItem T="string" Value="@v.FileName">@Label(v)</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudSpacer />
+            <MudText Typo="Typo.body2" Class="diff-counts">
+                <span class="added">+@_added</span> <span class="removed">-@_removed</span>
+            </MudText>
+            <MudTooltip Text="Copy the newer version">
+                <MudIconButton Icon="@Icons.Material.Outlined.ContentCopy" Size="Size.Small"
+                               Color="Color.Primary" OnClick="CopyNewerAsync" />
+            </MudTooltip>
+        </MudStack>
+    </MudPaper>
+
+    <MudPaper Elevation="0" Outlined="true" Class="pa-0 diff-paper">
+        @if (_diff is null || _added + _removed == 0)
+        {
+            <MudText Typo="Typo.body2" Class="mud-text-secondary pa-4">These two versions are identical.</MudText>
+        }
+        else
+        {
+            <div class="diff">
+                @foreach (var line in _diff.Lines)
+                {
+                    <div class="diff-line @CssFor(line.Type)">
+                        <span class="diff-gutter">@Marker(line.Type)</span>
+                        <span class="diff-text">@line.Text</span>
+                    </div>
+                }
+            </div>
+        }
+    </MudPaper>
+}
+
+@code {
+    [SupplyParameterFromQuery] public string? Connection { get; set; }
+    [SupplyParameterFromQuery] public string? Name { get; set; }
+
+    private List<ObjectVersion> _versions = [];
+    private string? _from, _to;
+    private DiffPaneModel? _diff;
+    private int _added, _removed;
+
+    protected override void OnInitialized()
+    {
+        _versions = Store.List(Connection ?? "", Name ?? "");
+        if (_versions.Count < 2) return;
+
+        // newest first, so the default comparison is the most recent change
+        Select(_versions[1].FileName, _versions[0].FileName);
+    }
+
+    private void Select(string? from, string? to)
+    {
+        (_from, _to) = (from, to);
+
+        var older = Store.Read(Connection!, Name!, _from!) ?? "";
+        var newer = Store.Read(Connection!, Name!, _to!) ?? "";
+
+        _diff = InlineDiffBuilder.Diff(older, newer);
+        _added = _diff.Lines.Count(l => l.Type == ChangeType.Inserted);
+        _removed = _diff.Lines.Count(l => l.Type == ChangeType.Deleted);
+    }
+
+    private static string Label(ObjectVersion v) =>
+        $"{v.SavedAt:yyyy-MM-dd HH:mm:ss.fff}  ({v.Bytes / 1024.0:N1} KB)";
+
+    private static string CssFor(ChangeType type) => type switch
+    {
+        ChangeType.Inserted => "added",
+        ChangeType.Deleted => "removed",
+        _ => ""
+    };
+
+    private static string Marker(ChangeType type) => type switch
+    {
+        ChangeType.Inserted => "+",
+        ChangeType.Deleted => "-",
+        _ => " "
+    };
+
+    private string DefinitionUrl =>
+        $"definition?connection={Uri.EscapeDataString(Connection ?? "")}&name={Uri.EscapeDataString(Name ?? "")}";
+
+    private async Task CopyNewerAsync()
+    {
+        await JS.InvokeVoidAsync("smr.copy", Store.Read(Connection!, Name!, _to!));
+        Snackbar.Add("Newer version copied", Severity.Success);
+    }
+}
