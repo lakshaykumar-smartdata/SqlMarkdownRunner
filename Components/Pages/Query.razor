@@ -106,7 +106,7 @@
                                 </span>
                                 <span class="muted">@group.Count()</span>
                             </div>
-                            @foreach (var o in IsCollapsed(group.Key) ? Enumerable.Empty<DbObject>() : group)
+                            @foreach (var o in IsCollapsed(group.Key) ? Enumerable.Empty<DbObject>() : group.OrderByDescending(o => o.ModifiedUtc))
                             {
                                 @if (o.Columns.Count > 0)
                                 {
