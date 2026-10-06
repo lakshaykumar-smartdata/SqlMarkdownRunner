@@ -176,3 +176,4 @@ pre.call-preview { margin: 0; padding: .6rem .8rem; background: #0f172a; color: 
 .diff-line.removed { background: #fef3f2; color: #b42318; }
 .diff-counts .added { color: #067647; font-weight: 700; }
 .diff-counts .removed { color: #b42318; font-weight: 700; }
+.objects-size { flex: 0 0 auto; font-size: .66rem; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }

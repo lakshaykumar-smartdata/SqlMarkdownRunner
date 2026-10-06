@@ -12,7 +12,7 @@ public class ObjectCache(IWebHostEnvironment env)
 {
     // Bump whenever DbObject or DbColumn gains a field: an older file would otherwise
     // deserialise with those fields silently defaulted, showing wrong data as fact.
-    private const int CurrentVersion = 3;
+    private const int CurrentVersion = 4;
 
     private readonly object _lock = new();
 

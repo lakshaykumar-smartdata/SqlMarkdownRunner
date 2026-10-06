@@ -13,7 +13,9 @@ public record DbObject(
     string Name,
     string DragText,
     List<DbColumn> Columns,
-    DateTime ModifiedUtc);
+    DateTime ModifiedUtc,
+    long RowCount = 0,
+    long SizeKb = 0);
 
 public partial class SqlRunner
 {
@@ -112,6 +114,13 @@ public partial class SqlRunner
                 md.AppendLine();
             }
         }
+        // A cancel can surface as OperationCanceledException or as a SqlException wrapping it,
+        // so the token is what decides, not the exception type.
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            md.AppendLine("> **Cancelled.** Batches that already finished are shown above.");
+            md.AppendLine();
+        }
         catch (Exception ex)
         {
             md.AppendLine($"> **Error:** {ex.Message.Replace("\n", " ")}");
@@ -156,8 +165,10 @@ public partial class SqlRunner
                 md.AppendLine($"**{Math.Max(affected, 0):N0} row(s) affected.**");
             }
         }
-        catch (SqlException ex)
+        catch (SqlException ex) when (!ct.IsCancellationRequested)
         {
+            // SqlClient reports a cancel as an ordinary error, so let it out to stop the loop
+            // rather than marking one batch failed and carrying on to the next.
             md.AppendLine($"> **Error {ex.Number}** (line {ex.LineNumber}): {ex.Message.Replace("\n", " ")}");
         }
         finally
@@ -237,6 +248,13 @@ public partial class SqlRunner
             ) pk ON pk.object_id = c.object_id AND pk.column_id = c.column_id
             WHERE o.type IN ('U', 'V') AND o.is_ms_shipped = 0
             ORDER BY c.object_id, c.column_id;
+
+            SELECT p.object_id,
+                   SUM(CASE WHEN p.index_id IN (0, 1) THEN p.rows ELSE 0 END) AS row_count,
+                   SUM(a.total_pages) * 8 AS kb
+            FROM sys.partitions p
+            JOIN sys.allocation_units a ON a.container_id = p.partition_id
+            GROUP BY p.object_id;
             """;
 
         await using var conn = new SqlConnection(entry.ConnectionString);
@@ -278,13 +296,20 @@ public partial class SqlRunner
                 reader.GetBoolean(7)));
         }
 
+        var sizes = new Dictionary<int, (long Rows, long Kb)>();
+        await reader.NextResultAsync(ct);
+        while (await reader.ReadAsync(ct))
+            sizes[reader.GetInt32(0)] = (reader.GetInt64(1), reader.GetInt64(2));
+
         return rows
             .Select(r => new DbObject(
                 Kind(r.Type),
                 r.Name,
                 CallTemplate(r.Type, r.Name, parameters.GetValueOrDefault(r.Id, [])),
                 columns.GetValueOrDefault(r.Id, []),
-                r.ModifiedUtc))
+                r.ModifiedUtc,
+                sizes.GetValueOrDefault(r.Id).Rows,
+                sizes.GetValueOrDefault(r.Id).Kb))
             .ToList();
     }
 

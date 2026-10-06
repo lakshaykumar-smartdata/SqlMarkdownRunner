@@ -32,16 +32,22 @@
     <MudItem xs="12" lg="8">
         <MudPaper Elevation="0" Outlined="true" Class="pa-4">
             <MudTextField @bind-Value="_sql" T="string" Variant="Variant.Outlined" Margin="Margin.Dense"
-                          Lines="18" Class="mono sql-editor" Label="SQL"
-                          HelperText="GO batch separators supported. Drag a name from the panel to insert it."
+                          Lines="18" Class="mono sql-editor" Label="SQL" OnKeyDown="OnEditorKeyDown"
+                          HelperText="GO batch separators supported · Ctrl+Enter runs · drag a name from the panel to insert it"
                           Placeholder="SELECT TOP 10 * FROM sys.tables;" />
 
             <MudStack Row="true" Spacing="2" Class="mt-4" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RunAsync"
-                           Disabled="@(_running || Session.Current is null)"
-                           StartIcon="@Icons.Material.Filled.PlayArrow">
-                    @(_running ? "Running…" : "Run")
-                </MudButton>
+                @if (_running)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="Cancel"
+                               StartIcon="@Icons.Material.Filled.Stop">Stop</MudButton>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RunAsync"
+                               Disabled="@(Session.Current is null)"
+                               StartIcon="@Icons.Material.Filled.PlayArrow">Run</MudButton>
+                }
                 @if (_markdown is not null)
                 {
                     <MudButton Variant="Variant.Outlined" OnClick="Copy"
@@ -113,6 +119,7 @@
                                     <details>
                                         <summary class="objects-item" draggable="true" data-drag="@o.DragText" title="@o.DragText">
                                             <span class="objects-name">@o.Name</span>
+                                            <span class="objects-size" title="@SizeTitle(o)">@SizeShort(o)</span>
                                             <span class="objects-modified" title="@Modified(o)">@ModifiedShort(o)</span>
                                         </summary>
                                         <div class="objects-cols">
@@ -138,6 +145,7 @@
                                     <div class="objects-row">
                                         <div class="objects-item" draggable="true" data-drag="@o.DragText" title="@o.DragText">
                                             <span class="objects-name">@o.Name</span>
+                                            <span class="objects-size" title="@SizeTitle(o)">@SizeShort(o)</span>
                                             <span class="objects-modified" title="@Modified(o)">@ModifiedShort(o)</span>
                                         </div>
                                         <a class="objects-eye" href="@DefinitionUrl(o)" target="_blank" rel="noopener"
@@ -171,6 +179,7 @@
 @code {
     private string _sql = "";
     private bool _running;
+    private CancellationTokenSource? _cancel;
     private string? _markdown;
     private MarkupString _rendered;
 
@@ -243,15 +252,17 @@
         if (!await AllowedOnThisConnectionAsync(entry)) return;
         if (!await ConfirmUnfilteredWritesAsync()) return;
 
-        _running = true;
+        (_running, _cancel) = (true, new CancellationTokenSource());
         try
         {
-            _markdown = await SqlRunner.RunAsMarkdownAsync(entry, _sql, entry.TimeoutSeconds);
+            _markdown = await SqlRunner.RunAsMarkdownAsync(
+                entry, _sql, entry.TimeoutSeconds, null, _cancel.Token);
             _rendered = MarkdownView.Render(_markdown);
         }
         finally
         {
-            _running = false;
+            _cancel.Dispose();
+            (_running, _cancel) = (false, null);
         }
 
         History.Add(entry.Name, _sql);
@@ -294,6 +305,13 @@
         return ok == true;
     }
 
+    private void Cancel() => _cancel?.Cancel();
+
+    private async Task OnEditorKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && (e.CtrlKey || e.MetaKey) && !_running) await RunAsync();
+    }
+
     private void Clear() => (_sql, _markdown, _rendered) = ("", null, default);
 
     /// <summary>Column names and types as a markdown table, ready to paste into an LLM.</summary>
@@ -326,6 +344,20 @@
     {
         if (!_collapsedKinds.Add(kind)) _collapsedKinds.Remove(kind);
     }
+
+    /// <summary>Rows and reserved space, so a stale backup table is obvious without querying.</summary>
+    private static string SizeShort(DbObject o) => o.RowCount switch
+    {
+        0 => "",
+        < 1_000 => $"{o.RowCount}",
+        < 1_000_000 => $"{o.RowCount / 1_000.0:0.#}k",
+        _ => $"{o.RowCount / 1_000_000.0:0.#}M"
+    };
+
+    private static string SizeTitle(DbObject o) =>
+        o.RowCount == 0 && o.SizeKb == 0
+            ? ""
+            : $"{o.RowCount:N0} rows · {o.SizeKb / 1024.0:N1} MB";
 
     /// <summary>modify_date arrives as UTC, so the browser machine decides what it reads as.</summary>
     private static string Modified(DbObject o) =>
