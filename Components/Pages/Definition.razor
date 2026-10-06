@@ -90,6 +90,9 @@
             {
                 <MudButton Variant="Variant.Outlined" OnClick="CopyResultAsync"
                            StartIcon="@Icons.Material.Outlined.ContentCopy">Copy markdown</MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="DownloadWorkbook"
+                           Disabled="@(_resultSets.Count == 0)"
+                           StartIcon="@Icons.Material.Outlined.GridOn">Export .xlsx</MudButton>
             }
             <MudText Typo="Typo.caption" Class="mud-text-secondary">
                 empty box = NULL · timeout @_entry!.TimeoutSeconds s
@@ -137,6 +140,7 @@ else if (_definition is not null)
     private SqlRunner.RoutineInfo? _routine;
     private readonly Dictionary<string, string> _arguments = [];
     private string? _result;
+    private List<ResultSet> _resultSets = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -236,13 +240,25 @@ else if (_definition is not null)
                 .Select(p => (p.Name, (string?)_arguments.GetValueOrDefault(p.Name)))
                 .ToList();
 
-            _result = await SqlRunner.RunAsMarkdownAsync(
+            var run = await SqlRunner.RunAsMarkdownAsync(
                 _entry, SqlRunner.CallSyntax(_routine, Name!), _entry.TimeoutSeconds, args);
+
+            (_result, _resultSets) = (run.Markdown, run.ResultSets);
         }
         finally
         {
             _running = false;
         }
+    }
+
+    private async Task DownloadWorkbook()
+    {
+        var bytes = ResultWorkbook.Build(_resultSets);
+
+        await JS.InvokeVoidAsync("smr.downloadBytes",
+            $"{Name}-{DateTime.Now:yyyyMMdd-HHmmss}.xlsx",
+            Convert.ToBase64String(bytes),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     }
 
     private async Task CopyResultAsync()

@@ -34,3 +34,16 @@ document.addEventListener('paste', e => {
     editor.selectionStart = editor.selectionEnd = head.length;
     editor.dispatchEvent(new Event('change', { bubbles: true }));
 });
+
+// Blazor hands binary back as base64; turn it into a file the browser will save.
+window.smr.downloadBytes = (name, base64, type) => {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([bytes], { type }));
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(a.href);
+};

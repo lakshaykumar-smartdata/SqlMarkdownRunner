@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using ClosedXML.Excel;
 
 namespace SqlMarkdownRunner;
 
@@ -82,6 +83,21 @@ public static class SelfTest
             """{"Name":"a","ConnectionString":"b"}""")!;
         Debug.Assert(!legacyFlags.IsProduction, "a connection must not become production by default");
         Debug.Assert(legacyFlags.IsActive, "an existing connection must stay visible");
+
+        // The workbook is read back rather than just checked for a zip header.
+        var sheetA = new ResultSet("Batch 1 result 1", ["id", "name"],
+            [["1", "Ada"], ["2", "NULL"]]);
+        var sheetB = new ResultSet("Batch 1 result 1", ["only"], [["x"]]);   // same title twice
+
+        using var book = new XLWorkbook(new MemoryStream(ResultWorkbook.Build([sheetA, sheetB])));
+
+        Debug.Assert(book.Worksheets.Count == 2);
+        Debug.Assert(book.Worksheet(1).Name == "Batch 1 result 1");
+        Debug.Assert(book.Worksheet(2).Name != book.Worksheet(1).Name, "sheet names must be unique");
+        Debug.Assert(book.Worksheet(1).Cell("A1").GetString() == "id");
+        Debug.Assert(book.Worksheet(1).Cell("B2").GetString() == "Ada");
+        Debug.Assert(book.Worksheet(1).Cell("B3").IsEmpty(), "a NULL belongs in an empty cell");
+        Debug.Assert(book.Worksheet(1).Row(1).Style.Font.Bold);
 
         Console.WriteLine("self-test: OK");
     }

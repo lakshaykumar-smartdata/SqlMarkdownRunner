@@ -54,6 +54,9 @@
                                StartIcon="@Icons.Material.Outlined.ContentCopy">Copy markdown</MudButton>
                     <MudButton Variant="Variant.Outlined" OnClick="Download"
                                StartIcon="@Icons.Material.Outlined.Download">Download .md</MudButton>
+                    <MudButton Variant="Variant.Outlined" OnClick="DownloadWorkbook"
+                               Disabled="@(_resultSets.Count == 0)"
+                               StartIcon="@Icons.Material.Outlined.GridOn">Export .xlsx</MudButton>
                 }
                 <MudButton Variant="Variant.Text" OnClick="Clear">Clear</MudButton>
                 <MudSpacer />
@@ -181,6 +184,7 @@
     private bool _running;
     private CancellationTokenSource? _cancel;
     private string? _markdown;
+    private List<ResultSet> _resultSets = [];
     private MarkupString _rendered;
 
     private List<DbObject> _objects = [];
@@ -255,8 +259,10 @@
         (_running, _cancel) = (true, new CancellationTokenSource());
         try
         {
-            _markdown = await SqlRunner.RunAsMarkdownAsync(
+            var run = await SqlRunner.RunAsMarkdownAsync(
                 entry, _sql, entry.TimeoutSeconds, null, _cancel.Token);
+
+            (_markdown, _resultSets) = (run.Markdown, run.ResultSets);
             _rendered = MarkdownView.Render(_markdown);
         }
         finally
@@ -312,7 +318,7 @@
         if (e.Key == "Enter" && (e.CtrlKey || e.MetaKey) && !_running) await RunAsync();
     }
 
-    private void Clear() => (_sql, _markdown, _rendered) = ("", null, default);
+    private void Clear() => (_sql, _markdown, _rendered, _resultSets) = ("", null, default, []);
 
     /// <summary>Column names and types as a markdown table, ready to paste into an LLM.</summary>
     private async Task CopySchemaAsync(DbObject o)
@@ -373,6 +379,16 @@
     {
         await JS.InvokeVoidAsync("smr.copy", _markdown);
         Snackbar.Add("Markdown copied", Severity.Success);
+    }
+
+    private async Task DownloadWorkbook()
+    {
+        var bytes = ResultWorkbook.Build(_resultSets);
+
+        await JS.InvokeVoidAsync("smr.downloadBytes",
+            $"sql-run-{DateTime.Now:yyyyMMdd-HHmmss}.xlsx",
+            Convert.ToBase64String(bytes),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     }
 
     private Task Download() =>

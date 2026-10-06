@@ -6,6 +6,10 @@ using Microsoft.Data.SqlClient;
 
 namespace SqlMarkdownRunner;
 
+public record ResultSet(string Title, List<string> Columns, List<string[]> Rows);
+
+public record RunResult(string Markdown, List<ResultSet> ResultSets);
+
 public record DbColumn(string Name, string Type, bool Nullable, bool IsPrimaryKey);
 
 public record DbObject(
@@ -84,11 +88,12 @@ public partial class SqlRunner
     }
 
     /// <summary>Runs the script and returns the whole session as one markdown document.</summary>
-    public static async Task<string> RunAsMarkdownAsync(
+    public static async Task<RunResult> RunAsMarkdownAsync(
         DbConnectionEntry entry, string sql, int commandTimeoutSeconds,
         IReadOnlyList<(string Name, string? Value)>? arguments = null, CancellationToken ct = default)
     {
         var md = new StringBuilder();
+        var sets = new List<ResultSet>();
         var sw = Stopwatch.StartNew();
 
         md.AppendLine("# SQL run");
@@ -110,7 +115,8 @@ public partial class SqlRunner
                 md.AppendLine(batches[i]);
                 md.AppendLine("```");
                 md.AppendLine();
-                await AppendBatchResultAsync(conn, batches[i], commandTimeoutSeconds, arguments, md, ct);
+                await AppendBatchResultAsync(
+                    conn, batches[i], commandTimeoutSeconds, arguments, md, sets, i + 1, ct);
                 md.AppendLine();
             }
         }
@@ -128,12 +134,13 @@ public partial class SqlRunner
         }
 
         md.AppendLine($"_Total time: {sw.ElapsedMilliseconds} ms_");
-        return md.ToString();
+        return new RunResult(md.ToString(), sets);
     }
 
     private static async Task AppendBatchResultAsync(
         SqlConnection conn, string batch, int timeout,
-        IReadOnlyList<(string Name, string? Value)>? arguments, StringBuilder md, CancellationToken ct)
+        IReadOnlyList<(string Name, string? Value)>? arguments, StringBuilder md,
+        List<ResultSet> sets, int batchNumber, CancellationToken ct)
     {
         await using var cmd = new SqlCommand(batch, conn) { CommandTimeout = timeout };
 
@@ -151,7 +158,7 @@ public partial class SqlRunner
             do
             {
                 if (reader.FieldCount > 0)
-                    await AppendTableAsync(reader, md, ++set, ct);
+                    await AppendTableAsync(reader, md, sets, batchNumber, ++set, ct);
             } while (await reader.NextResultAsync(ct));
 
             await reader.CloseAsync();
@@ -179,7 +186,9 @@ public partial class SqlRunner
         foreach (var m in messages) md.AppendLine($"> {m.Replace("\n", " ")}");
     }
 
-    private static async Task AppendTableAsync(SqlDataReader reader, StringBuilder md, int set, CancellationToken ct)
+    private static async Task AppendTableAsync(
+        SqlDataReader reader, StringBuilder md, List<ResultSet> sets,
+        int batchNumber, int set, CancellationToken ct)
     {
         // SQL Server returns "" for expression columns (e.g. select count(*)); an empty
         // markdown header renders as a broken table, so give it a usable name.
@@ -193,25 +202,28 @@ public partial class SqlRunner
             if (rows.Count == MaxRowsPerResultSet) { truncated = true; break; }
             var row = new string[cols.Length];
             for (var c = 0; c < cols.Length; c++)
-                row[c] = Cell(reader.IsDBNull(c) ? null : reader.GetValue(c));
+                row[c] = Raw(reader.IsDBNull(c) ? null : reader.GetValue(c));
             rows.Add(row);
         }
+
+        sets.Add(new ResultSet($"Batch {batchNumber} result {set}", cols.ToList(), rows));
 
         md.AppendLine($"**Result set {set}** — {rows.Count}{(truncated ? "+" : "")} row(s)");
         md.AppendLine();
         md.AppendLine("| " + string.Join(" | ", cols.Select(Escape)) + " |");
         md.AppendLine("| " + string.Join(" | ", cols.Select(_ => "---")) + " |");
-        foreach (var row in rows) md.AppendLine("| " + string.Join(" | ", row) + " |");
+        foreach (var row in rows) md.AppendLine("| " + string.Join(" | ", row.Select(Escape)) + " |");
         // ponytail: hard row cap keeps the markdown paste-able; raise MaxRowsPerResultSet if needed.
         if (truncated) md.AppendLine($"\n_Output truncated at {MaxRowsPerResultSet} rows._");
     }
 
-    private static string Cell(object? value) => value switch
+    /// <summary>The value as text, unescaped - markdown escaping happens where it is written.</summary>
+    private static string Raw(object? value) => value switch
     {
         null => "NULL",
         byte[] b => $"0x{Convert.ToHexString(b)}",
-        DateTime d => Escape(d.ToString("yyyy-MM-dd HH:mm:ss.fff")),
-        _ => Escape(value.ToString() ?? "")
+        DateTime d => d.ToString("yyyy-MM-dd HH:mm:ss.fff"),
+        _ => value.ToString() ?? ""
     };
 
     private static string Escape(string s) =>
