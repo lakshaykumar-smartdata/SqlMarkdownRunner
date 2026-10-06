@@ -8,10 +8,14 @@
 
 <PageTitle>Saved runs</PageTitle>
 
-<MudText Typo="Typo.h5">Saved runs</MudText>
-<MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
-    Auto-saved markdown under <code>@Runs.Root</code>
-</MudText>
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-4">
+    <div>
+        <MudText Typo="Typo.h5">Saved runs</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            @_files.Count file(s) under <code>@Runs.Root</code>
+        </MudText>
+    </div>
+</MudStack>
 
 @if (_files.Count == 0)
 {
@@ -21,46 +25,57 @@
 }
 else
 {
-    <MudTable Items="_files" Dense="true" Hover="true" Elevation="0" Outlined="true"
-              Breakpoint="Breakpoint.None" RowClassFunc="@((f, _) => f.FileName == _openFile ? "mud-theme-primary-hover" : "")">
-        <HeaderContent>
-            <MudTh>File</MudTh>
-            <MudTh Style="width:11rem">Saved at</MudTh>
-            <MudTh Style="width:6rem">Size</MudTh>
-            <MudTh Style="width:1%" />
-        </HeaderContent>
-        <RowTemplate>
-            <MudTd><code>@context.FileName</code></MudTd>
-            <MudTd Class="nowrap">@context.SavedAt.ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
-            <MudTd Class="nowrap">@($"{context.Bytes / 1024.0:N1} KB")</MudTd>
-            <MudTd Class="nowrap">
-                <MudTooltip Text="Preview">
-                    <MudIconButton Icon="@Icons.Material.Outlined.Visibility" Size="Size.Small"
-                                   Color="Color.Primary" OnClick="@(() => Open(context))" />
-                </MudTooltip>
-                <MudTooltip Text="Delete">
-                    <MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small"
-                                   Color="Color.Error" OnClick="@(() => DeleteAsync(context))" />
-                </MudTooltip>
-            </MudTd>
-        </RowTemplate>
-    </MudTable>
-}
+    <MudGrid Spacing="3">
+        <MudItem xs="12" md="5">
+            <MudPaper Elevation="0" Outlined="true" Class="saved-list">
+                @foreach (var f in _files)
+                {
+                    <div class="saved-item @(f.FileName == _openFile ? "selected" : "")" @onclick="() => Open(f)">
+                        <div class="saved-item-text">
+                            <div class="saved-name">@f.FileName</div>
+                            <div class="saved-meta">
+                                @f.SavedAt.ToString("yyyy-MM-dd HH:mm:ss") · @($"{f.Bytes / 1024.0:N1} KB")
+                            </div>
+                        </div>
+                        <MudTooltip Text="Delete">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small" Color="Color.Error"
+                                           OnClick="@(() => DeleteAsync(f))" />
+                        </MudTooltip>
+                    </div>
+                }
+            </MudPaper>
+        </MudItem>
 
-@if (_markdown is not null)
-{
-    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-8 mb-3" Spacing="2">
-        <MudText Typo="Typo.subtitle2">@_openFile</MudText>
-        <MudSpacer />
-        <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.ContentCopy"
-                   OnClick="CopyAsync">Copy markdown</MudButton>
-        <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Download"
-                   OnClick="DownloadAsync">Download .md</MudButton>
-    </MudStack>
+        <MudItem xs="12" md="7">
+            <div class="saved-preview">
+                @if (_markdown is null)
+                {
+                    <MudPaper Elevation="0" Outlined="true" Class="pa-8 d-flex justify-center align-center saved-empty">
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary">Pick a run on the left to preview it.</MudText>
+                    </MudPaper>
+                }
+                else
+                {
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+                        <MudText Typo="Typo.subtitle2" Class="saved-open-name">@_openFile</MudText>
+                        <MudSpacer />
+                        <MudTooltip Text="Copy markdown">
+                            <MudIconButton Icon="@Icons.Material.Outlined.ContentCopy" Size="Size.Small"
+                                           Color="Color.Primary" OnClick="CopyAsync" />
+                        </MudTooltip>
+                        <MudTooltip Text="Download .md">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Download" Size="Size.Small"
+                                           Color="Color.Primary" OnClick="DownloadAsync" />
+                        </MudTooltip>
+                    </MudStack>
 
-    <MudPaper Elevation="0" Outlined="true" Class="pa-6">
-        <div class="rendered">@MarkdownView.Render(_markdown)</div>
-    </MudPaper>
+                    <MudPaper Elevation="0" Outlined="true" Class="pa-5 saved-markdown">
+                        <div class="rendered">@MarkdownView.Render(_markdown)</div>
+                    </MudPaper>
+                }
+            </div>
+        </MudItem>
+    </MudGrid>
 }
 
 @code {
@@ -96,9 +111,7 @@ else
     private async Task DeleteAsync(SavedRun f)
     {
         var ok = await Dialogs.ShowMessageBoxAsync(
-            "Delete saved run?",
-            f.FileName,
-            yesText: "Delete", cancelText: "Cancel");
+            "Delete saved run?", f.FileName, yesText: "Delete", cancelText: "Cancel");
 
         if (ok != true) return;
 
