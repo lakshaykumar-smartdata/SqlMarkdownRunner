@@ -10,7 +10,9 @@
 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-4">
     <div>
         <MudText Typo="Typo.h5">@Name</MudText>
-        <MudText Typo="Typo.body2" Class="mud-text-secondary">@Connection</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            @Connection@(_routine?.IsTrigger == true && _routine.Parent != "" ? $" · trigger on {_routine.Parent}" : "")
+        </MudText>
     </div>
     <MudSpacer />
 
@@ -40,10 +42,22 @@
                    StartIcon="@Icons.Material.Outlined.History">
             History (@_versionCount)
         </MudButton>
-        <MudButton Variant="Variant.Outlined" OnClick="ToggleRunner" Disabled="@(_routine is null)"
-                   StartIcon="@Icons.Material.Filled.PlayArrow">
-            @(_showRunner ? "Hide run" : "Execute")
-        </MudButton>
+        @if (_routine?.IsTrigger == true)
+        {
+            <MudButton Variant="Variant.Outlined" OnClick="ToggleTriggerAsync"
+                       Disabled="@(_togglingTrigger || _entry?.IsProduction != false || _routine.Parent == "")"
+                       Color="@(_routine.IsDisabled ? Color.Success : Color.Warning)"
+                       StartIcon="@(_routine.IsDisabled ? Icons.Material.Outlined.PlayCircle : Icons.Material.Outlined.PauseCircle)">
+                @(_routine.IsDisabled ? "Enable trigger" : "Disable trigger")
+            </MudButton>
+        }
+        else
+        {
+            <MudButton Variant="Variant.Outlined" OnClick="ToggleRunner" Disabled="@(_routine is null)"
+                       StartIcon="@Icons.Material.Filled.PlayArrow">
+                @(_showRunner ? "Hide run" : "Execute")
+            </MudButton>
+        }
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CopyAsync"
                    Disabled="@(_definition is null)"
                    StartIcon="@Icons.Material.Outlined.ContentCopy">Copy definition</MudButton>
@@ -136,7 +150,7 @@ else if (_definition is not null)
     private string? _definition, _error;
     private int _versionCount;
     private string _draft = "";
-    private bool _editing, _saving, _showRunner, _running;
+    private bool _editing, _saving, _showRunner, _running, _togglingTrigger;
     private SqlRunner.RoutineInfo? _routine;
     private readonly Dictionary<string, string> _arguments = [];
     private string? _result;
@@ -226,6 +240,37 @@ else if (_definition is not null)
 
     private string VersionsUrl =>
         $"versions?connection={Uri.EscapeDataString(Connection ?? "")}&name={Uri.EscapeDataString(Name ?? "")}";
+
+    /// <summary>A trigger cannot be called, so turning it off and on is the nearest action.</summary>
+    private async Task ToggleTriggerAsync()
+    {
+        if (_entry is null || _routine is null || _routine.Parent == "") return;
+
+        var turningOn = _routine.IsDisabled;
+        var ok = await Dialogs.ShowMessageBoxAsync(
+            turningOn ? "Enable this trigger?" : "Disable this trigger?",
+            (MarkupString)($"<code>{Name}</code> on <code>{_routine.Parent}</code> " +
+                           $"at <strong>{_entry.Name}</strong> will {(turningOn ? "fire again" : "stop firing")} immediately."),
+            yesText: turningOn ? "Enable" : "Disable", cancelText: "Cancel");
+
+        if (ok != true) return;
+
+        _togglingTrigger = true;
+        try
+        {
+            await SqlRunner.SetTriggerEnabledAsync(_entry, Name!, _routine.Parent, turningOn);
+            _routine = await SqlRunner.GetRoutineAsync(_entry, Name!);
+            Snackbar.Add($"{Name} {(turningOn ? "enabled" : "disabled")}", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _togglingTrigger = false;
+        }
+    }
 
     private void ToggleRunner() => _showRunner = !_showRunner;
 

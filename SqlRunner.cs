@@ -19,7 +19,12 @@ public record DbObject(
     List<DbColumn> Columns,
     DateTime ModifiedUtc,
     long RowCount = 0,
-    long SizeKb = 0);
+    long SizeKb = 0,
+    string ParentName = "",
+    bool IsDisabled = false)
+{
+    public bool IsTrigger => Kind == "Triggers";
+}
 
 public partial class SqlRunner
 {
@@ -234,10 +239,13 @@ public partial class SqlRunner
     {
         const string sql = """
             SELECT o.object_id, o.type, s.name AS schema_name, o.name,
-                   DATEADD(MINUTE, DATEDIFF(MINUTE, GETDATE(), GETUTCDATE()), o.modify_date) AS modified_utc
+                   DATEADD(MINUTE, DATEDIFF(MINUTE, GETDATE(), GETUTCDATE()), o.modify_date) AS modified_utc,
+                   ISNULL(OBJECT_NAME(o.parent_object_id), '') AS parent_name,
+                   ISNULL(tr.is_disabled, 0) AS is_disabled
             FROM sys.objects o
             JOIN sys.schemas s ON s.schema_id = o.schema_id
-            WHERE o.type IN ('U', 'V', 'P', 'FN', 'IF', 'TF') AND o.is_ms_shipped = 0
+            LEFT JOIN sys.triggers tr ON tr.object_id = o.object_id
+            WHERE o.type IN ('U', 'V', 'P', 'FN', 'IF', 'TF', 'TR') AND o.is_ms_shipped = 0
             ORDER BY s.name, o.name;
 
             SELECT p.object_id, p.name, t.name AS type_name, p.max_length, p.precision, p.scale, p.is_output
@@ -275,13 +283,15 @@ public partial class SqlRunner
         await using var cmd = new SqlCommand(sql, conn) { CommandTimeout = 30 };
         await using var reader = await cmd.ExecuteReaderAsync(ct);
 
-        var rows = new List<(int Id, string Type, string Name, DateTime ModifiedUtc)>();
+        var rows = new List<(int Id, string Type, string Name, DateTime ModifiedUtc, string Parent, bool Disabled)>();
         while (await reader.ReadAsync(ct))
             rows.Add((
                 reader.GetInt32(0),
                 reader.GetString(1).TrimEnd(),
                 $"{reader.GetString(2)}.{reader.GetString(3)}",
-                DateTime.SpecifyKind(reader.GetDateTime(4), DateTimeKind.Utc)));
+                DateTime.SpecifyKind(reader.GetDateTime(4), DateTimeKind.Utc),
+                reader.GetString(5),
+                reader.GetBoolean(6)));
 
         var parameters = new Dictionary<int, List<Param>>();
         await reader.NextResultAsync(ct);
@@ -321,7 +331,9 @@ public partial class SqlRunner
                 columns.GetValueOrDefault(r.Id, []),
                 r.ModifiedUtc,
                 sizes.GetValueOrDefault(r.Id).Rows,
-                sizes.GetValueOrDefault(r.Id).Kb))
+                sizes.GetValueOrDefault(r.Id).Kb,
+                r.Parent,
+                r.Disabled))
             .ToList();
     }
 
@@ -361,6 +373,24 @@ public partial class SqlRunner
             : definition;   // already an ALTER, or nothing to swap
     }
 
+    /// <summary>Turns a DML trigger on or off. This is DDL, so it is refused on a read-only connection.</summary>
+    public static async Task SetTriggerEnabledAsync(
+        DbConnectionEntry entry, string name, string parent, bool enabled, CancellationToken ct = default)
+    {
+        await using var conn = new SqlConnection(entry.ConnectionString);
+        await conn.OpenAsync(ct);
+
+        // Object names cannot be parameters, so they go through QUOTENAME on the server.
+        var sql = $"DECLARE @s nvarchar(max) = N'{(enabled ? "ENABLE" : "DISABLE")} TRIGGER ' + " +
+                  "QUOTENAME(PARSENAME(@name, 2)) + N'.' + QUOTENAME(PARSENAME(@name, 1)) + " +
+                  "N' ON ' + QUOTENAME(PARSENAME(@parent, 2)) + N'.' + QUOTENAME(PARSENAME(@parent, 1)); EXEC sp_executesql @s;";
+
+        await using var cmd = new SqlCommand(sql, conn) { CommandTimeout = entry.TimeoutSeconds };
+        cmd.Parameters.AddWithValue("@name", name);
+        cmd.Parameters.AddWithValue("@parent", parent);
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
     /// <summary>Applies an edited definition. The text is stored verbatim by SQL Server.</summary>
     public static async Task AlterAsync(
         DbConnectionEntry entry, string definition, CancellationToken ct = default)
@@ -374,9 +404,12 @@ public partial class SqlRunner
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
-    public record RoutineInfo(string Type, List<RoutineParam> Parameters)
+    public record RoutineInfo(string Type, List<RoutineParam> Parameters, string Parent = "", bool IsDisabled = false)
     {
         public bool IsFunction => Type is "FN" or "IF" or "TF";
+
+        /// <summary>A trigger fires on DML; there is nothing to call.</summary>
+        public bool IsTrigger => Type is "TR";
     }
 
     public record RoutineParam(string Name, string Type, bool IsOutput);
@@ -386,8 +419,11 @@ public partial class SqlRunner
         DbConnectionEntry entry, string name, CancellationToken ct = default)
     {
         const string sql = """
-            SELECT o.type, p.name, t.name AS type_name, p.max_length, p.precision, p.scale, p.is_output
+            SELECT o.type, p.name, t.name AS type_name, p.max_length, p.precision, p.scale, p.is_output,
+                   ISNULL(OBJECT_SCHEMA_NAME(o.parent_object_id) + '.' + OBJECT_NAME(o.parent_object_id), '') AS parent_name,
+                   ISNULL(tr.is_disabled, 0) AS is_disabled
             FROM sys.objects o
+            LEFT JOIN sys.triggers tr ON tr.object_id = o.object_id
             LEFT JOIN sys.parameters p ON p.object_id = o.object_id AND p.parameter_id > 0
             LEFT JOIN sys.types t ON t.user_type_id = p.user_type_id
             WHERE o.object_id = OBJECT_ID(@name)
@@ -403,10 +439,14 @@ public partial class SqlRunner
         await using var reader = await cmd.ExecuteReaderAsync(ct);
 
         string? type = null;
+        var parent = "";
+        var disabled = false;
         var parameters = new List<RoutineParam>();
         while (await reader.ReadAsync(ct))
         {
             type ??= reader.GetString(0).TrimEnd();
+            parent = reader.GetString(7);
+            disabled = reader.GetBoolean(8);
             if (reader.IsDBNull(1)) continue;   // the LEFT JOIN row for a routine with no parameters
 
             parameters.Add(new RoutineParam(
@@ -415,7 +455,7 @@ public partial class SqlRunner
                 reader.GetBoolean(6)));
         }
 
-        return type is null ? null : new RoutineInfo(type, parameters);
+        return type is null ? null : new RoutineInfo(type, parameters, parent, disabled);
     }
 
     /// <summary>The statement that calls a routine, with one placeholder per parameter.</summary>
@@ -449,7 +489,7 @@ public partial class SqlRunner
     /// <summary>What dropping the name into the editor writes: a runnable call, parameters included.</summary>
     internal static string CallTemplate(string type, string name, List<Param> parameters)
     {
-        if (type is "U" or "V") return name;
+        if (type is "U" or "V" or "TR") return name;
 
         var signature = string.Join(", ", parameters.Select(p => $"{p.Name} {p.Type}"));
 
@@ -485,6 +525,7 @@ public partial class SqlRunner
         "U" => "Tables",
         "V" => "Views",
         "P" => "Stored procedures",
+        "TR" => "Triggers",
         _ => "Functions"
     };
 

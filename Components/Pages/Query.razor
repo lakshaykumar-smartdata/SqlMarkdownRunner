@@ -92,7 +92,7 @@
             else if (_objects.Count == 0)
             {
                 <MudText Typo="Typo.body2" Class="mud-text-secondary">
-                    Load this database's tables, views, procedures and functions, then drag a name into the editor.
+                    Load this database's tables, views, procedures, functions and triggers, then drag a name into the editor.
                 </MudText>
             }
             else
@@ -146,8 +146,12 @@
                                 else
                                 {
                                     <div class="objects-row">
-                                        <div class="objects-item" draggable="true" data-drag="@o.DragText" title="@o.DragText">
+                                        <div class="objects-item" draggable="true" data-drag="@o.DragText" title="@Tooltip(o)">
                                             <span class="objects-name">@o.Name</span>
+                                            @if (o.IsDisabled)
+                                            {
+                                                <span class="objects-disabled" title="This trigger is disabled">off</span>
+                                            }
                                             <span class="objects-size" title="@SizeTitle(o)">@SizeShort(o)</span>
                                             <span class="objects-modified" title="@Modified(o)">@ModifiedShort(o)</span>
                                         </div>
@@ -352,6 +356,12 @@
     }
 
     /// <summary>Rows and reserved space, so a stale backup table is obvious without querying.</summary>
+    /// <summary>A trigger means little without the table it sits on.</summary>
+    private static string Tooltip(DbObject o) =>
+        o.IsTrigger && o.ParentName != ""
+            ? $"{o.Name} on {o.ParentName}{(o.IsDisabled ? " (disabled)" : "")}"
+            : o.DragText;
+
     private static string SizeShort(DbObject o) => o.RowCount switch
     {
         0 => "",
