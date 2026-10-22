@@ -107,6 +107,15 @@ public static class SelfTest
         Debug.Assert(cell.Length == 32_767, "a cell must not exceed what Excel accepts");
         Debug.Assert(cell.EndsWith("[truncated]"), "trimming must be visible, not silent");
 
+        Debug.Assert(!string.IsNullOrWhiteSpace(AppUser.Name), "there must always be an account to attribute to");
+        Debug.Assert(AppUser.FileSafeName.IndexOfAny(Path.GetInvalidFileNameChars()) < 0,
+            "a domain-qualified account must still make a usable file name");
+
+        // An existing history.json predates RunBy; it must read back blank, not throw.
+        var oldEntry = JsonSerializer.Deserialize<HistoryEntry>(
+            """{"Id":"a","Connection":"b","RunAt":"2026-01-01T00:00:00","Sql":"select 1"}""")!;
+        Debug.Assert(oldEntry.RunBy == "");
+
         Console.WriteLine("self-test: OK");
     }
 }

@@ -118,7 +118,7 @@ else
     }
 
     private static string Label(ObjectVersion v) =>
-        $"{v.SavedAt:yyyy-MM-dd HH:mm:ss.fff}  ({v.Bytes / 1024.0:N1} KB)";
+        $"{v.SavedAt:yyyy-MM-dd HH:mm:ss.fff}  {(v.SavedBy == "" ? "" : $"by {v.SavedBy}  ")}({v.Bytes / 1024.0:N1} KB)";
 
     private static string CssFor(ChangeType type) => type switch
     {

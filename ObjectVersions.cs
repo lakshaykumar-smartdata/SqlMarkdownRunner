@@ -1,6 +1,6 @@
 namespace SqlMarkdownRunner;
 
-public record ObjectVersion(string FileName, DateTime SavedAt, long Bytes);
+public record ObjectVersion(string FileName, DateTime SavedAt, long Bytes, string SavedBy);
 
 /// <summary>
 /// Every definition this app has saved, one .sql per version under
@@ -22,7 +22,7 @@ public class ObjectVersions(IWebHostEnvironment env)
         // milliseconds - and a fixed-width one, since the list is ordered by file name.
         var when = DateTime.Now;
         string path;
-        while (File.Exists(path = Path.Combine(folder, $"{Safe(objectName)}-{when:yyyyMMdd-HHmmss-fff}.sql")))
+        while (File.Exists(path = Path.Combine(folder, $"{Safe(objectName)}-{when:yyyyMMdd-HHmmss-fff}-{AppUser.FileSafeName}.sql")))
             when = when.AddMilliseconds(1);
 
         File.WriteAllText(path, definition);
@@ -42,7 +42,7 @@ public class ObjectVersions(IWebHostEnvironment env)
 
         return new DirectoryInfo(folder).GetFiles("*.sql")
             .OrderByDescending(f => f.Name)
-            .Select(f => new ObjectVersion(f.Name, f.LastWriteTime, f.Length))
+            .Select(f => new ObjectVersion(f.Name, f.LastWriteTime, f.Length, SavedBy(f.Name)))
             .ToList();
     }
 
@@ -51,6 +51,14 @@ public class ObjectVersions(IWebHostEnvironment env)
         // GetFileName strips any path the caller smuggled in, so ".." cannot walk out of Root.
         var path = Path.Combine(Folder(connection, objectName), Path.GetFileName(fileName));
         return File.Exists(path) ? File.ReadAllText(path) : null;
+    }
+
+    /// <summary>The account is the last dash-separated part of the name, before .sql.</summary>
+    private static string SavedBy(string fileName)
+    {
+        var stem = Path.GetFileNameWithoutExtension(fileName);
+        var dash = stem.LastIndexOf('-');
+        return dash < 0 ? "" : stem[(dash + 1)..];
     }
 
     private string Folder(string connection, string objectName) =>

@@ -40,11 +40,13 @@ else
     <MudTable Items="Matches" Dense="true" Hover="true" Elevation="0" Outlined="true" Breakpoint="Breakpoint.None">
         <HeaderContent>
             <MudTh Style="width:11rem">Run at</MudTh>
+            <MudTh Style="width:10rem">Run by</MudTh>
             <MudTh>SQL</MudTh>
             <MudTh Style="width:1%" />
         </HeaderContent>
         <RowTemplate>
             <MudTd Class="nowrap">@context.RunAt.ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
+            <MudTd Class="nowrap mud-text-secondary">@(context.RunBy == "" ? "—" : context.RunBy)</MudTd>
             <MudTd><pre class="sql">@context.Sql</pre></MudTd>
             <MudTd Class="nowrap">
                 <MudTooltip Text="Load into the editor">

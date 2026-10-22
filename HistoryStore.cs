@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace SqlMarkdownRunner;
 
-public record HistoryEntry(string Id, string Connection, DateTime RunAt, string Sql);
+public record HistoryEntry(string Id, string Connection, DateTime RunAt, string Sql, string RunBy = "");
 
 /// <summary>Past runs, newest first, in a JSON file next to the app — same deal as ConnectionStore.</summary>
 public class HistoryStore(IWebHostEnvironment env)
@@ -33,7 +33,8 @@ public class HistoryStore(IWebHostEnvironment env)
 
         // Re-running the same statement moves it back to the top instead of piling up.
         entries.RemoveAll(e => e.Connection == connection && e.Sql == sql);
-        entries.Insert(0, new HistoryEntry(Guid.NewGuid().ToString("N")[..8], connection, DateTime.Now, sql));
+        entries.Insert(0, new HistoryEntry(
+            Guid.NewGuid().ToString("N")[..8], connection, DateTime.Now, sql, AppUser.Name));
 
         Save(entries.Take(MaxEntries).ToList());
     }

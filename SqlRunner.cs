@@ -105,9 +105,10 @@ public partial class SqlRunner
         md.AppendLine();
         md.AppendLine($"- **Connection:** {entry.Name} — `{Describe(entry.ConnectionString)}`");
         md.AppendLine($"- **Executed (local):** {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        md.AppendLine($"- **Run by:** {AppUser.Name}");
         md.AppendLine();
 
-        await using var conn = new SqlConnection(entry.ConnectionString);
+        await using var conn = new SqlConnection(Connect(entry));
         var batches = SplitBatches(sql).ToList();
         try
         {
@@ -277,7 +278,7 @@ public partial class SqlRunner
             GROUP BY p.object_id;
             """;
 
-        await using var conn = new SqlConnection(entry.ConnectionString);
+        await using var conn = new SqlConnection(Connect(entry));
         await conn.OpenAsync(ct);
 
         await using var cmd = new SqlCommand(sql, conn) { CommandTimeout = 30 };
@@ -377,7 +378,7 @@ public partial class SqlRunner
     public static async Task SetTriggerEnabledAsync(
         DbConnectionEntry entry, string name, string parent, bool enabled, CancellationToken ct = default)
     {
-        await using var conn = new SqlConnection(entry.ConnectionString);
+        await using var conn = new SqlConnection(Connect(entry));
         await conn.OpenAsync(ct);
 
         // Object names cannot be parameters, so they go through QUOTENAME on the server.
@@ -395,7 +396,7 @@ public partial class SqlRunner
     public static async Task AlterAsync(
         DbConnectionEntry entry, string definition, CancellationToken ct = default)
     {
-        await using var conn = new SqlConnection(entry.ConnectionString);
+        await using var conn = new SqlConnection(Connect(entry));
         await conn.OpenAsync(ct);
 
         // ALTER has to be the only statement in its batch.
@@ -430,7 +431,7 @@ public partial class SqlRunner
             ORDER BY p.parameter_id;
             """;
 
-        await using var conn = new SqlConnection(entry.ConnectionString);
+        await using var conn = new SqlConnection(Connect(entry));
         await conn.OpenAsync(ct);
 
         await using var cmd = new SqlCommand(sql, conn) { CommandTimeout = 30 };
@@ -476,7 +477,7 @@ public partial class SqlRunner
     public static async Task<string?> GetDefinitionAsync(
         DbConnectionEntry entry, string name, CancellationToken ct = default)
     {
-        await using var conn = new SqlConnection(entry.ConnectionString);
+        await using var conn = new SqlConnection(Connect(entry));
         await conn.OpenAsync(ct);
 
         await using var cmd = new SqlCommand("SELECT OBJECT_DEFINITION(OBJECT_ID(@name));", conn)
@@ -528,6 +529,24 @@ public partial class SqlRunner
         "TR" => "Triggers",
         _ => "Functions"
     };
+
+    /// <summary>
+    /// The connection string with the account stamped on it, so sys.dm_exec_sessions and any
+    /// server-side trace attribute the query to a person rather than to "Core .NET SqlClient".
+    /// A name the connection string already carries is left alone.
+    /// </summary>
+    public static string Connect(DbConnectionEntry entry)
+    {
+        var builder = new SqlConnectionStringBuilder(entry.ConnectionString);
+
+        if (string.IsNullOrWhiteSpace(builder.ApplicationName) ||
+            builder.ApplicationName.StartsWith("Core Microsoft SqlClient", StringComparison.Ordinal))
+        {
+            builder.ApplicationName = $"SqlMarkdownRunner ({AppUser.Name})";
+        }
+
+        return builder.ConnectionString;
+    }
 
     /// <summary>Server/database only — never echo credentials into a document meant for pasting.</summary>
     public static string Describe(string connectionString)
