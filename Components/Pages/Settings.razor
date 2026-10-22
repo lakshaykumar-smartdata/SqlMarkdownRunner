@@ -79,64 +79,79 @@ else
     @(_editingOriginal is null ? "Add connection" : $"Edit {_editingOriginal}")
 </MudText>
 
-<MudPaper Elevation="0" Outlined="true" Class="pa-6" Style="max-width:56rem">
-    <MudStack Spacing="4">
-        <MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
-                      Placeholder="Reporting DB" />
+<MudPaper Elevation="0" Outlined="true" Class="pa-6" Style="max-width:52rem">
+    <MudStack Spacing="6">
 
-        <MudTextField T="string" Value="ConnectionString" ValueChanged="@(v => ConnectionString = v)"
-                      Label="Connection string" Variant="Variant.Outlined" Margin="Margin.Dense"
-                      Lines="3" Class="mono"
-                      HelperText="Paste straight from appsettings.json — surrounding quotes are fine" />
+        <div>
+            <MudText Typo="Typo.overline" Class="mud-text-secondary">Server</MudText>
+            <MudGrid Spacing="3" Class="mt-0">
+                <MudItem xs="12" sm="7">
+                    <MudTextField @bind-Value="_builder.DataSource" @bind-Value:after="SyncFromFields"
+                                  Label="Server" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  Placeholder="localhost\SQLEXPRESS   or   10.0.0.5,1433" />
+                </MudItem>
+                <MudItem xs="12" sm="5">
+                    <MudTextField @bind-Value="_builder.InitialCatalog" @bind-Value:after="SyncFromFields"
+                                  Label="Database" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  Placeholder="MyDatabase" />
+                </MudItem>
+            </MudGrid>
+        </div>
+
+        <div>
+            <MudText Typo="Typo.overline" Class="mud-text-secondary">Sign in</MudText>
+            <MudCheckBox @bind-Value="_builder.IntegratedSecurity" @bind-Value:after="SyncFromFields"
+                         Label="Use my Windows account" Size="Size.Small" Dense="true" Class="mb-1" />
+            <MudGrid Spacing="3" Class="mt-0">
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_builder.UserID" @bind-Value:after="SyncFromFields"
+                                  Label="User Id" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  Disabled="_builder.IntegratedSecurity" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_builder.Password" @bind-Value:after="SyncFromFields"
+                                  Label="Password" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  InputType="InputType.Password" Disabled="_builder.IntegratedSecurity" />
+                </MudItem>
+            </MudGrid>
+            <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="4" Class="mt-2">
+                <MudCheckBox @bind-Value="_builder.TrustServerCertificate" @bind-Value:after="SyncFromFields"
+                             Label="Trust server certificate" Size="Size.Small" Dense="true" />
+                <MudCheckBox @bind-Value="_builder.MultipleActiveResultSets" @bind-Value:after="SyncFromFields"
+                             Label="Multiple active result sets" Size="Size.Small" Dense="true" />
+            </MudStack>
+        </div>
+
+        <div>
+            <MudText Typo="Typo.overline" Class="mud-text-secondary">This connection</MudText>
+            <MudGrid Spacing="3" Class="mt-0">
+                <MudItem xs="12" sm="5">
+                    <MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  HelperText="Defaults to the database name" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField @bind-Value="_timeout" Label="Query timeout (s)" Variant="Variant.Outlined"
+                                     Margin="Margin.Dense" Min="1" Max="3600" />
+                </MudItem>
+            </MudGrid>
+            <MudStack Spacing="0" Class="mt-2">
+                <MudCheckBox @bind-Value="_autoSave" Size="Size.Small" Dense="true"
+                             Label="Auto-save markdown of every run" />
+                <MudCheckBox @bind-Value="_isActive" Size="Size.Small" Dense="true"
+                             Label="Active — show in the connection picker" />
+                <MudCheckBox @bind-Value="_isProduction" Size="Size.Small" Dense="true" Color="Color.Error"
+                             Label="Production — read-only, refuse anything that writes" />
+            </MudStack>
+        </div>
 
         <MudExpansionPanels Elevation="0" Outlined="true" Dense="true">
-            <MudExpansionPanel Text="… or fill the fields (they stay in sync with the string above)">
-                <MudGrid Spacing="3">
-                    <MudItem xs="12" sm="6">
-                        <MudTextField @bind-Value="_builder.DataSource" @bind-Value:after="SyncFromFields"
-                                      Label="Server" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                    </MudItem>
-                    <MudItem xs="12" sm="6">
-                        <MudTextField @bind-Value="_builder.InitialCatalog" @bind-Value:after="SyncFromFields"
-                                      Label="Database" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                    </MudItem>
-                    <MudItem xs="12" sm="6">
-                        <MudTextField @bind-Value="_builder.UserID" @bind-Value:after="SyncFromFields"
-                                      Label="User Id" Variant="Variant.Outlined" Margin="Margin.Dense"
-                                      Disabled="_builder.IntegratedSecurity" />
-                    </MudItem>
-                    <MudItem xs="12" sm="6">
-                        <MudTextField @bind-Value="_builder.Password" @bind-Value:after="SyncFromFields"
-                                      Label="Password" Variant="Variant.Outlined" Margin="Margin.Dense"
-                                      InputType="InputType.Password" Disabled="_builder.IntegratedSecurity" />
-                    </MudItem>
-                    <MudItem xs="12">
-                        <MudStack Row="true" Wrap="Wrap.Wrap">
-                            <MudCheckBox @bind-Value="_builder.IntegratedSecurity" @bind-Value:after="SyncFromFields"
-                                         Label="Windows auth" Size="Size.Small" Dense="true" />
-                            <MudCheckBox @bind-Value="_builder.TrustServerCertificate" @bind-Value:after="SyncFromFields"
-                                         Label="Trust server certificate" Size="Size.Small" Dense="true" />
-                            <MudCheckBox @bind-Value="_builder.MultipleActiveResultSets" @bind-Value:after="SyncFromFields"
-                                         Label="MultipleActiveResultSets" Size="Size.Small" Dense="true" />
-                        </MudStack>
-                    </MudItem>
-                </MudGrid>
+            <MudExpansionPanel Text="Connection string (optional — paste one instead of filling the fields)">
+                <MudTextField T="string" Value="ConnectionString" ValueChanged="@(v => ConnectionString = v)"
+                              Label="Connection string" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Lines="3" Class="mono"
+                              HelperText="Paste straight from appsettings.json — surrounding quotes are fine. Stays in sync with the fields above." />
             </MudExpansionPanel>
         </MudExpansionPanels>
-
-        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="4" Wrap="Wrap.Wrap">
-            <MudNumericField @bind-Value="_timeout" Label="Query timeout (s)" Variant="Variant.Outlined"
-                             Margin="Margin.Dense" Min="1" Max="3600" Style="max-width:11rem" />
-            <MudCheckBox @bind-Value="_autoSave" Size="Size.Small" Dense="true"
-                         Label="Auto-save markdown of every run" />
-        </MudStack>
-
-        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="4" Wrap="Wrap.Wrap">
-            <MudCheckBox @bind-Value="_isProduction" Size="Size.Small" Dense="true" Color="Color.Error"
-                         Label="Production — read-only, refuse anything that writes" />
-            <MudCheckBox @bind-Value="_isActive" Size="Size.Small" Dense="true"
-                         Label="Active — show in the connection picker" />
-        </MudStack>
 
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save"
@@ -156,7 +171,7 @@ else
 
 @code {
     private List<DbConnectionEntry> _connections = [];
-    private SqlConnectionStringBuilder _builder = new();
+    private SqlConnectionStringBuilder _builder = NewBuilder();
     private string _name = "", _connectionString = "";
     private string? _editingOriginal, _status;
     private bool _statusOk, _testing;
@@ -166,6 +181,10 @@ else
     private bool _isActive = true;
 
     protected override void OnInitialized() => _connections = Store.Load();
+
+    /// <summary>Almost every dev box needs both of these, so new connections start with them on.</summary>
+    private static SqlConnectionStringBuilder NewBuilder() =>
+        new() { TrustServerCertificate = true, MultipleActiveResultSets = true };
 
     /// <summary>Raw string is the source of truth; every edit re-populates the fields below it.</summary>
     private string ConnectionString
@@ -218,9 +237,9 @@ else
 
     private void Save()
     {
-        if (string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_connectionString))
+        if (string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_builder.DataSource))
         {
-            SetStatus("Name and connection string are both required.", ok: false);
+            SetStatus("Name and server are both required.", ok: false);
             return;
         }
         if (_name != _editingOriginal && _connections.Any(c => c.Name == _name))
@@ -272,6 +291,6 @@ else
         (_editingOriginal, _name, _connectionString, _status) = (null, "", "", null);
         (_timeout, _autoSave) = (60, true);
         (_isProduction, _isActive) = (false, true);
-        _builder = new SqlConnectionStringBuilder();
+        _builder = NewBuilder();
     }
 }
