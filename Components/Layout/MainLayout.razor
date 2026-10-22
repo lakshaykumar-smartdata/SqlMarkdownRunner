@@ -1,6 +1,7 @@
 @inherits LayoutComponentBase
 @implements IDisposable
 @inject Session Session
+@inject NavigationManager Nav
 
 <MudThemeProvider Theme="Theme" />
 <MudPopoverProvider />
@@ -29,7 +30,8 @@
         }
         else
         {
-            <MudSelect T="string" Value="Session.Name" ValueChanged="SelectConnection"
+            <MudTooltip Text="This page is pinned to the connection in its URL" Disabled="@(!PinnedToUrl)">
+            <MudSelect T="string" Value="Session.Name" ValueChanged="SelectConnection" Disabled="PinnedToUrl"
                        Dense="true" Margin="Margin.Dense" Variant="Variant.Outlined"
                        Class="@($"connection-select {(Session.Current?.IsProduction == true ? "prod" : "")}")"
                        Style="max-width:17rem" Adornment="Adornment.Start"
@@ -41,6 +43,7 @@
                     <MudSelectItem T="string" Value="@c.Name">@c.Name</MudSelectItem>
                 }
             </MudSelect>
+            </MudTooltip>
         }
     </MudAppBar>
 
@@ -89,6 +92,12 @@
     protected override void OnInitialized() => Session.Changed += Refresh;
 
     public void Dispose() => Session.Changed -= Refresh;
+
+    /// <summary>These pages are about one object on one connection, named in the URL —
+    /// switching the picker underneath them would show the wrong thing.</summary>
+    private bool PinnedToUrl =>
+        Nav.Uri.Contains("/definition", StringComparison.OrdinalIgnoreCase) ||
+        Nav.Uri.Contains("/versions", StringComparison.OrdinalIgnoreCase);
 
     private void SelectConnection(string name) => Session.Name = name;
 
