@@ -100,7 +100,8 @@
                 <MudTextField @bind-Value="_objectFilter" T="string" Immediate="true" Clearable="true"
                               Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2"
                               Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
-                              Placeholder="@($"Filter {_objects.Count} objects")" />
+                              Placeholder="@($"Filter {_objects.Count} objects")"
+                              @bind-Value:after="@(() => _pageByKind.Clear())" />
 
                 <div class="objects-scroll">
                     @foreach (var group in Filtered.GroupBy(o => o.Kind))
@@ -115,7 +116,7 @@
                                 </span>
                                 <span class="muted">@group.Count()</span>
                             </div>
-                            @foreach (var o in IsCollapsed(group.Key) ? Enumerable.Empty<DbObject>() : group.OrderByDescending(o => o.ModifiedUtc))
+                            @foreach (var o in PageOf(group))
                             {
                                 @if (o.Columns.Count > 0)
                                 {
@@ -161,6 +162,14 @@
                                         </a>
                                     </div>
                                 }
+                            }
+
+                            @if (PageCountOf(group) > 1)
+                            {
+                                <MudPagination Count="PageCountOf(group)" Selected="PageFor(group.Key)"
+                                               SelectedChanged="@(n => SetPage(group.Key, n))"
+                                               Size="Size.Small" BoundaryCount="1" MiddleCount="1"
+                                               Class="objects-pager" />
                             }
                         </div>
                     }
@@ -231,6 +240,7 @@
     {
         var cached = Session.Name is null ? null : Cache.Get(Session.Name);
         (_objects, _fetchedAt, _objectFilter, _objectError) = (cached?.Objects ?? [], cached?.FetchedAt, "", null);
+        _pageByKind.Clear();
     }
 
     private async Task LoadObjectsAsync()
@@ -346,6 +356,30 @@
     }
 
     private readonly HashSet<string> _collapsedKinds = [];
+
+    private readonly Dictionary<string, int> _pageByKind = [];
+
+    /// <summary>Each group pages on its own, so one long list does not push the others away.</summary>
+    private const int ObjectsPerPage = 25;
+
+    private int PageFor(string kind) => _pageByKind.GetValueOrDefault(kind, 1);
+
+    private void SetPage(string kind, int page) => _pageByKind[kind] = page;
+
+    private static int PageCountOf(IGrouping<string, DbObject> group) =>
+        (int)Math.Ceiling(group.Count() / (double)ObjectsPerPage);
+
+    private IEnumerable<DbObject> PageOf(IGrouping<string, DbObject> group)
+    {
+        if (IsCollapsed(group.Key)) return [];
+
+        // A filter can shrink a group under the page you were on, so clamp rather than show nothing.
+        var page = Math.Min(PageFor(group.Key), Math.Max(PageCountOf(group), 1));
+
+        return group.OrderByDescending(o => o.ModifiedUtc)
+            .Skip((page - 1) * ObjectsPerPage)
+            .Take(ObjectsPerPage);
+    }
 
     /// <summary>A filter is a search, so it overrides whatever is collapsed.</summary>
     private bool IsCollapsed(string kind) => _objectFilter == "" && _collapsedKinds.Contains(kind);
