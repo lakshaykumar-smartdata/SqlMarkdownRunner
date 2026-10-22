@@ -37,7 +37,8 @@
 }
 else
 {
-    <MudTable Items="Matches" Dense="true" Hover="true" Elevation="0" Outlined="true" Breakpoint="Breakpoint.None">
+    <MudTable Items="Matches" Dense="true" Hover="true" Elevation="0" Outlined="true" Breakpoint="Breakpoint.None"
+              Virtualize="false" RowsPerPage="25">
         <HeaderContent>
             <MudTh Style="width:11rem">Run at</MudTh>
             <MudTh Style="width:10rem">Run by</MudTh>
@@ -59,6 +60,9 @@ else
                 </MudTooltip>
             </MudTd>
         </RowTemplate>
+        <PagerContent>
+            <MudTablePager PageSizeOptions="new[] { 10, 25, 50, 100 }" />
+        </PagerContent>
     </MudTable>
 }
 

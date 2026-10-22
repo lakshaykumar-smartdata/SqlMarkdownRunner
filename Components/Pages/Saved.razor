@@ -35,7 +35,7 @@ else
     <MudGrid Spacing="3">
         <MudItem xs="12" md="5">
             <MudPaper Elevation="0" Outlined="true" Class="saved-list">
-                @foreach (var f in _matches)
+                @foreach (var f in Page)
                 {
                     <div class="saved-item @(f.FileName == _openFile ? "selected" : "")" @onclick="() => Open(f)">
                         <div class="saved-item-text">
@@ -51,6 +51,12 @@ else
                     </div>
                 }
             </MudPaper>
+
+            @if (PageCount > 1)
+            {
+                <MudPagination Count="PageCount" Selected="_page" SelectedChanged="GoTo"
+                               Size="Size.Small" Class="mt-3 d-flex justify-center" />
+            }
         </MudItem>
 
         <MudItem xs="12" md="7">
@@ -88,6 +94,13 @@ else
 @code {
     private List<SavedRun> _files = [], _matches = [];
     private string _filter = "";
+    private int _page = 1;
+
+    private const int PerPage = 15;
+
+    private int PageCount => (int)Math.Ceiling(_matches.Count / (double)PerPage);
+
+    private IEnumerable<SavedRun> Page => _matches.Skip((_page - 1) * PerPage).Take(PerPage);
     private string? _openFile, _markdown;
 
     protected override void OnInitialized()
@@ -119,7 +132,7 @@ else
     {
         if (string.IsNullOrWhiteSpace(_filter))
         {
-            _matches = _files;
+            (_matches, _page) = (_files, 1);
             return;
         }
 
@@ -127,7 +140,11 @@ else
             .Where(f => (Runs.Read(Session.Name!, f.FileName) ?? "")
                 .Contains(_filter, StringComparison.OrdinalIgnoreCase))
             .ToList();
+
+        _page = 1;
     }
+
+    private void GoTo(int page) => _page = page;
 
     private void Open(SavedRun f)
     {

@@ -27,7 +27,8 @@ else @if (_connections.Count == 0)
 }
 else
 {
-    <MudTable Items="_connections" Dense="true" Hover="true" Elevation="0" Outlined="true" Breakpoint="Breakpoint.None" Class="mb-8">
+    <MudTable Items="_connections" Dense="true" Hover="true" Elevation="0" Outlined="true" Breakpoint="Breakpoint.None"
+              Class="mb-8" RowsPerPage="10">
         <HeaderContent>
             <MudTh>Name</MudTh>
             <MudTh>Server / database</MudTh>
@@ -68,6 +69,9 @@ else
                 </MudTooltip>
             </MudTd>
         </RowTemplate>
+        <PagerContent>
+            <MudTablePager PageSizeOptions="new[] { 10, 25, 50, 100 }" />
+        </PagerContent>
     </MudTable>
 }
 
