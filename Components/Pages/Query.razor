@@ -45,8 +45,10 @@
                 else
                 {
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RunAsync"
-                               Disabled="@(Session.Current is null)"
-                               StartIcon="@Icons.Material.Filled.PlayArrow">Run</MudButton>
+                               Disabled="@(Session.Current is null || _checkingRoutines)"
+                               StartIcon="@Icons.Material.Filled.PlayArrow">
+                        @(_checkingRoutines ? "Checking what this EXEC reaches…" : "Run")
+                    </MudButton>
                 }
                 @if (_markdown is not null)
                 {
@@ -195,6 +197,7 @@
 @code {
     private string _sql = "";
     private bool _running;
+    private bool _checkingRoutines;
     private CancellationTokenSource? _cancel;
     private string? _markdown;
     private List<ResultSet> _resultSets = [];
@@ -289,23 +292,62 @@
         if (entry.AutoSaveMarkdown && _markdown is not null) Runs.Save(entry.Name, _markdown);
     }
 
-    /// <summary>A connection marked production refuses anything that writes, with no override.</summary>
+    /// <summary>
+    /// A connection marked production refuses anything that writes, with no override. A direct
+    /// INSERT/UPDATE/DELETE is caught by scanning; an EXEC is not, so what it reaches gets read.
+    /// </summary>
     private async Task<bool> AllowedOnThisConnectionAsync(DbConnectionEntry entry)
     {
         if (!entry.IsProduction) return true;
 
         var writes = SqlRunner.WriteStatements(_sql);
-        if (writes.Count == 0) return true;
+        if (writes.Count > 0)
+        {
+            await RefusedAsync(entry,
+                $"Found: <code>{string.Join("</code>, <code>", writes)}</code>");
+            return false;
+        }
 
-        await Dialogs.ShowMessageBoxAsync(
-            "This connection is read-only",
-            (MarkupString)($"<strong>{entry.Name}</strong> is marked as production, so it only runs " +
-                           $"queries that read.<br><br>Found: <code>{string.Join("</code>, <code>", writes)}</code>" +
-                           "<br><br>Untick Production on the Connections page if that is wrong."),
-            yesText: "OK");
+        if (SqlRunner.UsesDynamicSql(_sql))
+        {
+            await RefusedAsync(entry, "This script builds SQL as it runs, so what it would do "
+                                      + "cannot be known before running it.");
+            return false;
+        }
 
+        if (SqlRunner.ExecutedRoutines(_sql).Count == 0) return true;
+
+        // Reading the called routines costs a round trip each, so it waits until there is an EXEC.
+        _checkingRoutines = true;
+        List<SqlRunner.RoutineWrite> reached;
+        try
+        {
+            reached = await SqlRunner.ExecWritesAsync(entry, _sql);
+        }
+        catch (Exception ex)
+        {
+            await RefusedAsync(entry, $"What this EXEC reaches could not be checked: {ex.Message}");
+            return false;
+        }
+        finally
+        {
+            _checkingRoutines = false;
+        }
+
+        if (reached.Count == 0) return true;
+
+        var listed = string.Join("<br>", reached.Select(r => $"<code>{r.Routine}</code> — {r.Reason}"));
+        await RefusedAsync(entry, $"This EXEC reaches code that writes:<br><br>{listed}");
         return false;
     }
+
+    private Task RefusedAsync(DbConnectionEntry entry, string detail) =>
+        Dialogs.ShowMessageBoxAsync(
+            "This connection is read-only",
+            (MarkupString)($"<strong>{entry.Name}</strong> is marked as production, so it only runs "
+                           + $"queries that read.<br><br>{detail}"
+                           + "<br><br>Untick Production on the Connections page if that is wrong."),
+            yesText: "OK");
 
     /// <summary>An UPDATE or DELETE with no WHERE hits every row, so make the user say yes first.</summary>
     private async Task<bool> ConfirmUnfilteredWritesAsync()

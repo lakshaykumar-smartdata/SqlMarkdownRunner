@@ -23,6 +23,7 @@ public static class SelfTest
     public static void Run()
     {
         string[] Split(string sql) => SqlRunner.SplitBatches(sql).ToArray();
+        const string NL = "\n";
 
         Check(Split("select 1").Length == 1);
         Check(Split("select 1\nGO\nselect 2").SequenceEqual(["select 1", "select 2"]));
@@ -128,6 +129,44 @@ public static class SelfTest
         var oldEntry = JsonSerializer.Deserialize<HistoryEntry>(
             """{"Id":"a","Connection":"b","RunAt":"2026-01-01T00:00:00","Sql":"select 1"}""")!;
         Check(oldEntry.RunBy == "");
+
+
+        // What an EXEC names, so its definition can be read before a production connection runs it.
+        Check(SqlRunner.ExecutedRoutines("SELECT 1").Count == 0);
+        Check(SqlRunner.ExecutedRoutines("EXEC dbo.usp_Purge").Single() == "dbo.usp_Purge");
+        Check(SqlRunner.ExecutedRoutines("EXECUTE [dbo].[usp_Purge]").Single() == "dbo.usp_Purge");
+        Check(SqlRunner.ExecutedRoutines("EXEC @rc = dbo.usp_Purge").Single() == "dbo.usp_Purge");
+        Check(SqlRunner.ExecutedRoutines("exec dbo.a; exec dbo.b").Count == 2);
+        Check(SqlRunner.ExecutedRoutines("EXEC dbo.a; EXEC DBO.A").Count == 1, "same routine twice");
+        Check(SqlRunner.ExecutedRoutines("-- EXEC dbo.a" + NL + "SELECT 1").Count == 0, "comment is not a call");
+        Check(SqlRunner.ExecutedRoutines("SELECT QEXEC dbo.aQ".Replace("Q", "'")).Count == 0, "literal is not a call");
+        Check(SqlRunner.ExecutedRoutines("EXEC sp_executesql @sql").Count == 0, "handled as dynamic, not a name");
+
+        // Built as it runs, so no amount of reading it beforehand can say what it does.
+        Check(!SqlRunner.UsesDynamicSql("EXEC dbo.usp_Read"));
+        Check(SqlRunner.UsesDynamicSql("EXEC sp_executesql @sql"));
+        Check(SqlRunner.UsesDynamicSql("EXEC ('SELECT 1')"));
+        Check(SqlRunner.UsesDynamicSql("EXECUTE(@sql)"));
+        Check(!SqlRunner.UsesDynamicSql("-- EXEC(@sql)" + NL + "SELECT 1"), "comment is not dynamic SQL");
+
+
+        // A #temp table or @table variable dies with the batch, so writing to one is not a write.
+        // Without this the guard refuses nearly every reporting procedure and gets switched off.
+        Check(SqlRunner.WriteStatements("CREATE TABLE #t (id int)").Count == 0);
+        Check(SqlRunner.WriteStatements("INSERT INTO #t SELECT 1").Count == 0);
+        Check(SqlRunner.WriteStatements("DROP TABLE #t").Count == 0);
+        Check(SqlRunner.WriteStatements("UPDATE @rows SET a = 1").Count == 0);
+        Check(SqlRunner.WriteStatements("INSERT INTO dbo.Real SELECT * FROM #t").Single() == "INSERT");
+        Check(SqlRunner.WriteStatements("CREATE TABLE dbo.Real (id int)").Single() == "CREATE");
+
+        // OBJECT_DEFINITION returns the original CREATE text; counting that header as a write
+        // refused every routine an EXEC could possibly reach.
+        Check(SqlRunner.WriteStatements("CREATE PROCEDURE dbo.r AS SELECT 1").Count == 1, "header counts raw");
+        Check(SqlRunner.WriteStatements(SqlRunner.RoutineBody("CREATE PROCEDURE dbo.r AS SELECT 1")).Count == 0);
+        Check(SqlRunner.WriteStatements(
+            SqlRunner.RoutineBody("CREATE PROCEDURE dbo.w AS INSERT INTO dbo.t VALUES (1)")).Single() == "INSERT");
+        Check(SqlRunner.RoutineBody("CREATE PROC dbo.r AS SELECT 1").Length
+              == "CREATE PROC dbo.r AS SELECT 1".Length, "blanking must keep offsets");
 
         Console.WriteLine("self-test: OK");
     }

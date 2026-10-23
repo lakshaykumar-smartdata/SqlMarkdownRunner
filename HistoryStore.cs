@@ -5,7 +5,7 @@ namespace SqlMarkdownRunner;
 public record HistoryEntry(string Id, string Connection, DateTime RunAt, string Sql, string RunBy = "");
 
 /// <summary>Past runs, newest first, in a JSON file next to the app — same deal as ConnectionStore.</summary>
-public class HistoryStore(IWebHostEnvironment env)
+public class HistoryStore(IWebHostEnvironment env, ILogger<HistoryStore> log)
 {
     // ponytail: flat file trimmed to the last N runs. Move to SQLite only if this gets slow.
     public const int MaxEntries = 200;
@@ -24,9 +24,12 @@ public class HistoryStore(IWebHostEnvironment env)
             {
                 return JsonSerializer.Deserialize<List<HistoryEntry>>(File.ReadAllText(FilePath)) ?? [];
             }
-            catch (JsonException)
+            catch (JsonException ex)
             {
                 // Add() loads before every run, so throwing here would stop queries running at all.
+                log.LogError(ex, "{Path} is malformed; history reads as empty until the next save "
+                                 + "overwrites it. The previous save is at {Backup}",
+                    FilePath, AtomicFile.BackupOf(FilePath));
                 return [];
             }
         }

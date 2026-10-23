@@ -16,7 +16,7 @@ public record DbConnectionEntry(
 /// Connections in a JSON file next to the app, encrypted with DPAPI because it holds production
 /// passwords. Only the Windows account that wrote the file can read it back.
 /// </summary>
-public class ConnectionStore(IWebHostEnvironment env)
+public class ConnectionStore(IWebHostEnvironment env, ILogger<ConnectionStore> log)
 {
     private const string Marker = "DPAPI1:";
 
@@ -55,6 +55,7 @@ public class ConnectionStore(IWebHostEnvironment env)
             }
             catch (Exception ex) when (ex is CryptographicException or JsonException or FormatException)
             {
+                log.LogError(ex, "{Path} could not be decrypted or parsed; saving is now refused", FilePath);
                 Unreadable = true;
                 return [];
             }

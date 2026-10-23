@@ -11,3 +11,4 @@ wwwroot/object-versions/
 # whatever the original did, credentials included.
 *.bak
 *.tmp
+logs/

@@ -6,12 +6,12 @@ namespace SqlMarkdownRunner;
 /// The connection every page works against. The header picks it; Run SQL, History and Saved runs
 /// all follow it. The choice is written to selection.json, so a refresh or a new tab keeps it.
 /// </summary>
-public class Session(ConnectionStore store, IWebHostEnvironment env)
+public class Session(ConnectionStore store, IWebHostEnvironment env, ILogger<Session> log)
 {
     private readonly string _file = Path.Combine(env.ContentRootPath, "selection.json");
 
     private List<DbConnectionEntry> _connections = store.Load();
-    private string? _selected = Read(Path.Combine(env.ContentRootPath, "selection.json"));
+    private string? _selected = Read(Path.Combine(env.ContentRootPath, "selection.json"), log);
 
     public event Action? Changed;
 
@@ -41,15 +41,18 @@ public class Session(ConnectionStore store, IWebHostEnvironment env)
         Changed?.Invoke();
     }
 
-    private static string? Read(string file)
+    private static string? Read(string file, ILogger log)
     {
         try
         {
             return File.Exists(file) ? JsonSerializer.Deserialize<string>(File.ReadAllText(file)) : null;
         }
-        catch
+        catch (Exception ex)
         {
-            return null;   // an unreadable preference just means "no preference"
+            // An unreadable preference just means "no preference" — but say so, rather than
+            // leaving someone wondering why their connection keeps resetting.
+            log.LogWarning(ex, "{Path} could not be read; falling back to no saved connection", file);
+            return null;
         }
     }
 

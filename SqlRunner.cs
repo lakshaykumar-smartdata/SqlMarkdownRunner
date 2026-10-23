@@ -343,18 +343,127 @@ public partial class SqlRunner
         RegexOptions.IgnoreCase)]
     private static partial Regex WriteKeyword();
 
+    // Words that sit between the verb and the thing it acts on, so the target is the next one along.
+    private static readonly string[] TargetNoise = ["into", "from", "table", "top", "unique", "clustered",
+        "nonclustered", "index", "if", "exists", "object_id", "n"];
+
+    /// <summary>
+    /// True when a write verb is aimed at a #temp table or an @table variable. Those live and die
+    /// with the batch, so counting them would refuse nearly every reporting procedure ever written.
+    /// </summary>
+    private static bool TargetsScratchObject(string clean, int afterKeyword)
+    {
+        foreach (var word in clean[afterKeyword..].Split(
+                     [' ', '\t', '\r', '\n', '(', ')', ',', ';'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (TargetNoise.Contains(word, StringComparer.OrdinalIgnoreCase)) continue;
+            return word.StartsWith('#') || word.StartsWith('@');
+        }
+
+        return false;
+    }
+
     /// <summary>
     /// The writing statements in a script, for connections marked read-only. EXEC is not listed:
-    /// whether a procedure writes cannot be told from the call site.
+    /// whether a procedure writes cannot be told from the call site, so ExecWritesAsync reads it.
     /// </summary>
     public static List<string> WriteStatements(string sql)
     {
         var clean = CommentsAndLiterals().Replace(sql, m => new string(' ', m.Length));
 
         return WriteKeyword().Matches(clean)
+            .Where(m => !TargetsScratchObject(clean, m.Index + m.Length))
             .Select(m => m.Value.ToUpperInvariant())
             .Distinct()
             .ToList();
+    }
+
+    /// <summary>
+    /// A module's definition with its own CREATE header blanked out. OBJECT_DEFINITION hands back
+    /// the original CREATE text, and counting that as a write would refuse every routine ever called.
+    /// </summary>
+    internal static string RoutineBody(string definition)
+    {
+        var clean = CommentsAndLiterals().Replace(definition, m => new string(' ', m.Length));
+        var create = CreateKeyword().Match(clean);
+
+        return create.Success
+            ? definition[..create.Index] + new string(' ', create.Length) + definition[(create.Index + create.Length)..]
+            : definition;
+    }
+
+    // EXEC dbo.usp_X / EXECUTE [dbo].[usp_X] / EXEC @rc = dbo.usp_X — the name is what we look up.
+    [GeneratedRegex(@"\b(?:exec|execute)\s+(?:@\w+\s*=\s*)?(?<name>[\w\[\]]+(?:\.[\w\[\]]+){0,2})",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex ExecCall();
+
+    // EXEC ('SELECT ...') and EXEC sp_executesql build their statement while it runs.
+    [GeneratedRegex(@"\b(?:exec|execute)\s*\(|\bsp_executesql\b", RegexOptions.IgnoreCase)]
+    private static partial Regex DynamicExec();
+
+    /// <summary>True when the script builds SQL as it runs, which no amount of scanning can judge.</summary>
+    public static bool UsesDynamicSql(string sql) =>
+        DynamicExec().IsMatch(CommentsAndLiterals().Replace(sql, m => new string(' ', m.Length)));
+
+    /// <summary>The routines a script EXECs, deduplicated and stripped of brackets.</summary>
+    public static List<string> ExecutedRoutines(string sql)
+    {
+        var clean = CommentsAndLiterals().Replace(sql, m => new string(' ', m.Length));
+
+        return ExecCall().Matches(clean)
+            .Select(m => m.Groups["name"].Value.Replace("[", "").Replace("]", ""))
+            .Where(n => !n.Equals("sp_executesql", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    public record RoutineWrite(string Routine, string Reason);
+
+    /// <summary>
+    /// Walks what an EXEC actually reaches and reports everything that writes. A routine whose
+    /// definition cannot be read counts as writing: on a production connection the safe answer to
+    /// "I cannot tell" is no.
+    /// </summary>
+    // ponytail: depth-capped walk, one round trip per routine, and it only runs for a production
+    // connection whose script contains an EXEC. sys.sql_expression_dependencies would do the whole
+    // thing server-side if this ever gets slow.
+    public static async Task<List<RoutineWrite>> ExecWritesAsync(
+        DbConnectionEntry entry, string sql, int maxDepth = 5, CancellationToken ct = default)
+    {
+        var found = new List<RoutineWrite>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        async Task WalkAsync(string routine, int depth)
+        {
+            if (depth > maxDepth || !seen.Add(routine)) return;
+
+            string? definition;
+            try
+            {
+                definition = await GetDefinitionAsync(entry, routine, ct);
+            }
+            catch (SqlException ex)
+            {
+                found.Add(new RoutineWrite(routine, $"could not be read — {ex.Message}"));
+                return;
+            }
+
+            if (definition is null)
+            {
+                // An unknown name, no permission to see it, or an encrypted module.
+                found.Add(new RoutineWrite(routine, "definition is not readable"));
+                return;
+            }
+
+            var writes = WriteStatements(RoutineBody(definition));
+            if (writes.Count > 0) found.Add(new RoutineWrite(routine, string.Join(", ", writes)));
+            if (UsesDynamicSql(definition)) found.Add(new RoutineWrite(routine, "builds SQL as it runs"));
+
+            foreach (var nested in ExecutedRoutines(definition)) await WalkAsync(nested, depth + 1);
+        }
+
+        foreach (var routine in ExecutedRoutines(sql)) await WalkAsync(routine, 1);
+        return found;
     }
 
     [GeneratedRegex(@"\bCREATE\b", RegexOptions.IgnoreCase)]

@@ -6,6 +6,10 @@ if (args.Contains("--selftest")) { SelfTest.Run(); return; }
 
 var builder = WebApplication.CreateBuilder(args);
 
+// The console window this runs in gets closed; a fault has to survive that to be answerable.
+builder.Logging.AddProvider(
+    new FileLoggerProvider(Path.Combine(builder.Environment.ContentRootPath, "logs")));
+
 // Add services to the container.
 builder.Services.AddSingleton<ConnectionStore>();
 builder.Services.AddSingleton<HistoryStore>();
