@@ -47,7 +47,7 @@ public class Session(ConnectionStore store, IWebHostEnvironment env, ILogger<Ses
         {
             return File.Exists(file) ? JsonSerializer.Deserialize<string>(File.ReadAllText(file)) : null;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
             // An unreadable preference just means "no preference" — but say so, rather than
             // leaving someone wondering why their connection keeps resetting.

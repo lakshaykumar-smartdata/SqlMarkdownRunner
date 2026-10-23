@@ -665,7 +665,9 @@ public partial class SqlRunner
             var b = new SqlConnectionStringBuilder(connectionString);
             return $"{b.DataSource} / {b.InitialCatalog}";
         }
-        catch
+        // Measured, not guessed: a malformed string gives ArgumentException, a bad value
+        // FormatException, and a value too big for its keyword OverflowException.
+        catch (Exception ex) when (ex is ArgumentException or FormatException or OverflowException)
         {
             return "(unparsable connection string)";
         }

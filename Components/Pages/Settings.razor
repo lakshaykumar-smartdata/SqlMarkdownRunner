@@ -195,7 +195,10 @@ else
         {
             _connectionString = Normalise(value);
             try { _builder = new SqlConnectionStringBuilder(_connectionString); }
-            catch { /* leave the fields alone until the string parses */ }
+            // Same three as SqlRunner.Describe — the fields just wait until it parses.
+            catch (Exception ex) when (ex is ArgumentException or FormatException or OverflowException)
+            {
+            }
             DefaultNameFromDatabase();
         }
     }

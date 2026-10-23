@@ -168,6 +168,17 @@ public static class SelfTest
         Check(SqlRunner.RoutineBody("CREATE PROC dbo.r AS SELECT 1").Length
               == "CREATE PROC dbo.r AS SELECT 1".Length, "blanking must keep offsets");
 
+
+        // Describe no longer swallows everything, so the three shapes a bad connection string
+        // actually throws are pinned here: anything else now escapes rather than hiding.
+        const string Unparsable = "(unparsable connection string)";
+        Check(SqlRunner.Describe("Server=a;Initial Catalog=b") == "a / b");
+        Check(SqlRunner.Describe("rubbish") == Unparsable, "ArgumentException");
+        Check(SqlRunner.Describe("Server=x;Nonsense=1") == Unparsable, "ArgumentException, bad keyword");
+        Check(SqlRunner.Describe("Connect Timeout=abc") == Unparsable, "FormatException");
+        Check(SqlRunner.Describe("Packet Size=99999999999999999999") == Unparsable, "OverflowException");
+        Check(SqlRunner.Describe("") == " / ", "an empty string is legal, just empty");
+
         Console.WriteLine("self-test: OK");
     }
 }
