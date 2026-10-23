@@ -5,6 +5,9 @@
     <TargetFramework>net9.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Audit the whole graph, not just direct references: the advisory that prompted this
+         was on a package nothing here asks for by name. -->
+    <NuGetAuditMode>all</NuGetAuditMode>
   </PropertyGroup>
 
   <ItemGroup>
@@ -12,6 +15,10 @@
     <PackageReference Include="DiffPlex" Version="1.9.0" />
     <PackageReference Include="Markdig" Version="1.3.2" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="7.1.0" />
+    <!-- Pulled in by SqlClient, which still pins 9.0.18 as of 7.1.1. Versions up to 9.0.20 carry
+         two denial-of-service advisories (CVE-2026-84008 high, CVE-2026-70162 moderate), fixed in
+         9.0.21. A direct reference outranks the transitive one; drop this when SqlClient catches up. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="9.0.21" />
     <PackageReference Include="MudBlazor" Version="9.10.0" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
   </ItemGroup>
