@@ -16,7 +16,8 @@
 {
     <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Dense="true" Class="mb-4">
         <code>@Store.FilePath</code> could not be read — most likely it was encrypted by a different
-        Windows account. Saving is disabled so the file is not overwritten. Move it aside to start fresh.
+        Windows account. Saving is disabled so the file is not overwritten. Move it aside to start fresh,
+        or rename <code>@AtomicFile.BackupOf(Store.FilePath)</code> over it to go back one save.
     </MudAlert>
 }
 else @if (_connections.Count == 0)

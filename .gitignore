@@ -6,3 +6,8 @@ objects.json
 wwwroot/sql-queries/
 selection.json
 wwwroot/object-versions/
+
+# AtomicFile writes beside the target and keeps the previous save; both hold
+# whatever the original did, credentials included.
+*.bak
+*.tmp

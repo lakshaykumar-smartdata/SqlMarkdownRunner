@@ -20,7 +20,15 @@ public class HistoryStore(IWebHostEnvironment env)
         lock (_lock)
         {
             if (!File.Exists(FilePath)) return [];
-            return JsonSerializer.Deserialize<List<HistoryEntry>>(File.ReadAllText(FilePath)) ?? [];
+            try
+            {
+                return JsonSerializer.Deserialize<List<HistoryEntry>>(File.ReadAllText(FilePath)) ?? [];
+            }
+            catch (JsonException)
+            {
+                // Add() loads before every run, so throwing here would stop queries running at all.
+                return [];
+            }
         }
     }
 
@@ -45,6 +53,6 @@ public class HistoryStore(IWebHostEnvironment env)
 
     private void Save(List<HistoryEntry> entries)
     {
-        lock (_lock) File.WriteAllText(FilePath, JsonSerializer.Serialize(entries, Json));
+        lock (_lock) AtomicFile.WriteAllText(FilePath, JsonSerializer.Serialize(entries, Json));
     }
 }

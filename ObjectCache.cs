@@ -33,7 +33,7 @@ public class ObjectCache(IWebHostEnvironment env)
         {
             var all = Read();
             all[connection] = new CachedObjects(DateTime.Now, objects, CurrentVersion);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(all));
+            AtomicFile.WriteAllText(FilePath, JsonSerializer.Serialize(all));
         }
     }
 

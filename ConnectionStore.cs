@@ -75,7 +75,7 @@ public class ConnectionStore(IWebHostEnvironment env)
     }
 
     private void Write(List<DbConnectionEntry> entries) =>
-        File.WriteAllText(FilePath, Marker + Encrypt(JsonSerializer.Serialize(entries, Json)));
+        AtomicFile.WriteAllText(FilePath, Marker + Encrypt(JsonSerializer.Serialize(entries, Json)));
 
     private static string Encrypt(string json) =>
         Convert.ToBase64String(ProtectedData.Protect(
