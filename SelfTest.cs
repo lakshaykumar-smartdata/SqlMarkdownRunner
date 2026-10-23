@@ -179,6 +179,40 @@ public static class SelfTest
         Check(SqlRunner.Describe("Packet Size=99999999999999999999") == Unparsable, "OverflowException");
         Check(SqlRunner.Describe("") == " / ", "an empty string is legal, just empty");
 
+
+        // The label that turns a folder of timestamps into something readable.
+        Check(SqlRunner.SubjectOf("EXEC dbo.usp_Purge") == "EXEC-dbo.usp_Purge");
+        Check(SqlRunner.SubjectOf("EXECUTE [dbo].[usp_Purge]") == "EXEC-dbo.usp_Purge", "brackets stripped");
+        Check(SqlRunner.SubjectOf("ALTER PROCEDURE dbo.usp_X AS SELECT 1") == "ALTER-dbo.usp_X+1");
+        Check(SqlRunner.SubjectOf("UPDATE dbo.Allergy SET a = 1 WHERE id = 2") == "UPDATE-dbo.Allergy");
+        Check(SqlRunner.SubjectOf("DELETE FROM dbo.Logs WHERE id = 1") == "DELETE-dbo.Logs");
+        Check(SqlRunner.SubjectOf("INSERT INTO dbo.T VALUES (1)") == "INSERT-dbo.T");
+        Check(SqlRunner.SubjectOf("CREATE TABLE dbo.T (id int)") == "CREATE-dbo.T");
+        Check(SqlRunner.SubjectOf("TRUNCATE TABLE dbo.T") == "TRUNCATE-dbo.T");
+
+        // SELECT names its columns first, so the subject has to come from after FROM.
+        Check(SqlRunner.SubjectOf("SELECT name, id FROM sys.objects") == "SELECT-sys.objects");
+        Check(SqlRunner.SubjectOf("SELECT TOP 100 * FROM dbo.Clients") == "SELECT-dbo.Clients", "TOP n skipped");
+        Check(SqlRunner.SubjectOf("SELECT @@VERSION") == "SELECT", "nothing to name");
+        Check(SqlRunner.SubjectOf("SELECT 1 AS probe") == "SELECT");
+
+        // Everything else about the script, honestly reported.
+        Check(SqlRunner.SubjectOf("DROP TABLE a; DROP TABLE b; DROP TABLE c") == "DROP-a+2", "+n counts the rest");
+        Check(SqlRunner.SubjectOf("-- UPDATE dbo.X" + NL + "SELECT id FROM dbo.Y") == "SELECT-dbo.Y",
+            "a comment is not the subject");
+        Check(SqlRunner.SubjectOf("   ") == "query", "nothing recognisable");
+        Check(SqlRunner.SubjectOf("PRINT 'hello'") == "query");
+        Check(!SqlRunner.SubjectOf(new string('x', 10) + " SELECT * FROM " + new string('y', 200))
+            .Contains(new string('y', 60)), "long names are capped");
+
+
+        // Pulling the subject back out of a file name, for the Saved runs list.
+        Check(SavedRuns.LabelOf("Conn-20261023-165906-UPDATE-dbo.T+1.md") == "UPDATE-dbo.T+1");
+        Check(SavedRuns.LabelOf("Conn-20261023-165747-SELECT-sys.objects.md") == "SELECT-sys.objects");
+        Check(SavedRuns.LabelOf("My Conn With-Dashes-20261023-165747-EXEC-dbo.x.md") == "EXEC-dbo.x");
+        Check(SavedRuns.LabelOf("Conn-20261023-165906.md") == "", "written before names carried a subject");
+        Check(SavedRuns.LabelOf("nonsense.md") == "");
+
         Console.WriteLine("self-test: OK");
     }
 }

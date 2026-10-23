@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace SqlMarkdownRunner;
 
 public record SavedRun(string FileName, DateTime SavedAt, long Bytes);
@@ -5,7 +7,7 @@ public record SavedRun(string FileName, DateTime SavedAt, long Bytes);
 /// <summary>
 /// Markdown of every run, written under wwwroot/sql-queries/&lt;connection&gt;/ when auto-save is on.
 /// </summary>
-public class SavedRuns(IWebHostEnvironment env)
+public partial class SavedRuns(IWebHostEnvironment env)
 {
     /// <summary>Nothing else deletes these, so the oldest are trimmed as new ones arrive.</summary>
     public const int KeepPerConnection = 200;
@@ -17,15 +19,29 @@ public class SavedRuns(IWebHostEnvironment env)
         var folder = Path.Combine(Root, Safe(connection));
         Directory.CreateDirectory(folder);
 
-        var stem = label is null ? Safe(connection) : $"{Safe(connection)}-{Safe(label)}";
-        var path = Path.Combine(folder, $"{stem}-{DateTime.Now:yyyyMMdd-HHmmss}.md");
+        // Timestamp before label, so the name still sorts by date and the label is free to be
+        // anything. Sorting by name with the label first would group by subject instead.
+        var subject = string.IsNullOrWhiteSpace(label) ? "" : $"-{Safe(label)}";
+        var path = Path.Combine(folder, $"{Safe(connection)}-{DateTime.Now:yyyyMMdd-HHmmss}{subject}.md");
         File.WriteAllText(path, markdown);
 
-        foreach (var old in new DirectoryInfo(folder).GetFiles("*.md")
-                     .OrderByDescending(f => f.Name).Skip(KeepPerConnection))
-            old.Delete();
+        Trim(folder, KeepPerConnection);
 
         return path;
+    }
+
+    [GeneratedRegex(@"-\d{8}-\d{6}-(?<label>.+)\.md$")]
+    private static partial Regex StampedName();
+
+    /// <summary>
+    /// The subject out of a saved-run file name, or empty for one written before names carried it.
+    /// The list already shows the date and the connection, so the subject is the only part worth
+    /// the width.
+    /// </summary>
+    public static string LabelOf(string fileName)
+    {
+        var m = StampedName().Match(fileName);
+        return m.Success ? m.Groups["label"].Value : "";
     }
 
     public List<string> Connections() =>
@@ -58,10 +74,12 @@ public class SavedRuns(IWebHostEnvironment env)
         if (File.Exists(path)) File.Delete(path);
     }
 
+    /// <summary>Oldest first by the clock, not by name — retention must not depend on how a file
+    /// happens to be called.</summary>
     private static void Trim(string folder, int keep)
     {
         foreach (var old in new DirectoryInfo(folder).GetFiles("*.md")
-                     .OrderByDescending(f => f.Name).Skip(keep))
+                     .OrderByDescending(f => f.LastWriteTime).Skip(keep))
             old.Delete();
     }
 

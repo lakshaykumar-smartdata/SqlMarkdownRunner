@@ -392,6 +392,69 @@ public partial class SqlRunner
             : definition;
     }
 
+    [GeneratedRegex(@"\b(select|insert|update|delete|merge|exec|execute|create|alter|drop|truncate)\b",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex StatementVerb();
+
+    [GeneratedRegex(@"\bfrom\b", RegexOptions.IgnoreCase)]
+    private static partial Regex FromKeyword();
+
+    // Words that sit between a verb and the thing it names, so the real subject is further along.
+    private static readonly string[] SubjectNoise =
+        ["into", "from", "table", "top", "distinct", "procedure", "proc", "function", "trigger",
+         "view", "index", "unique", "clustered", "nonclustered", "if", "exists", "or", "alter"];
+
+    /// <summary>
+    /// A short label for what a script is about — its first statement's verb and what that acts on,
+    /// like <c>EXEC-dbo.usp_Purge</c> or <c>SELECT-dbo.Clients</c>. A folder of bare timestamps
+    /// gives no clue what is in any of the files.
+    /// </summary>
+    public static string SubjectOf(string sql)
+    {
+        var clean = CommentsAndLiterals().Replace(sql, m => new string(' ', m.Length));
+
+        var verbs = StatementVerb().Matches(clean);
+        if (verbs.Count == 0) return "query";
+
+        var first = verbs[0];
+        var verb = first.Value.ToUpperInvariant();
+        if (verb == "EXECUTE") verb = "EXEC";
+
+        var after = first.Index + first.Length;
+
+        // SELECT lists its columns before its table, so the subject is whatever follows FROM.
+        if (verb == "SELECT")
+        {
+            var from = FromKeyword().Match(clean, after);
+            if (!from.Success) return Label(verb, "", verbs.Count);
+            after = from.Index + from.Length;
+        }
+
+        return Label(verb, FirstName(clean, after), verbs.Count);
+    }
+
+    private static string FirstName(string clean, int start)
+    {
+        foreach (var word in clean[start..].Split(
+                     [' ', '\t', '\r', '\n', '(', ')', ',', ';'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (SubjectNoise.Contains(word, StringComparer.OrdinalIgnoreCase)) continue;
+            if (word.All(char.IsDigit)) continue;   // the 100 in TOP 100
+            return word.Replace("[", "").Replace("]", "");
+        }
+
+        return "";
+    }
+
+    /// <summary>The trailing +n says the script carried more statements than the one named.</summary>
+    private static string Label(string verb, string target, int statements)
+    {
+        var name = target.Length == 0 ? verb : $"{verb}-{target}";
+        if (name.Length > 48) name = name[..48];
+
+        return statements > 1 ? $"{name}+{statements - 1}" : name;
+    }
+
     // EXEC dbo.usp_X / EXECUTE [dbo].[usp_X] / EXEC @rc = dbo.usp_X — the name is what we look up.
     [GeneratedRegex(@"\b(?:exec|execute)\s+(?:@\w+\s*=\s*)?(?<name>[\w\[\]]+(?:\.[\w\[\]]+){0,2})",
         RegexOptions.IgnoreCase)]

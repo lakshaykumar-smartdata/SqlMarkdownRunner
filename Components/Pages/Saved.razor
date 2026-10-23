@@ -39,7 +39,7 @@ else
                 {
                     <div class="saved-item @(f.FileName == _openFile ? "selected" : "")" @onclick="() => Open(f)">
                         <div class="saved-item-text">
-                            <div class="saved-name">@f.FileName</div>
+                            <div class="saved-name" title="@f.FileName">@Title(f)</div>
                             <div class="saved-meta">
                                 @f.SavedAt.ToString("yyyy-MM-dd HH:mm:ss") · @($"{f.Bytes / 1024.0:N1} KB")
                             </div>
@@ -145,6 +145,10 @@ else
     }
 
     private void GoTo(int page) => _page = page;
+
+    /// <summary>The subject if the name carries one; older names have nothing but the timestamp.</summary>
+    private static string Title(SavedRun f) =>
+        SavedRuns.LabelOf(f.FileName) is { Length: > 0 } label ? label : f.FileName;
 
     private void Open(SavedRun f)
     {

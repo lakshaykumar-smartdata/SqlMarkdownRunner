@@ -289,7 +289,8 @@
         }
 
         History.Add(entry.Name, _sql);
-        if (entry.AutoSaveMarkdown && _markdown is not null) Runs.Save(entry.Name, _markdown);
+        if (entry.AutoSaveMarkdown && _markdown is not null)
+            Runs.Save(entry.Name, _markdown, SqlRunner.SubjectOf(_sql));
     }
 
     /// <summary>
