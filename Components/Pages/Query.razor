@@ -50,6 +50,10 @@
                         @(_checkingRoutines ? "Checking what this EXEC reaches…" : "Run")
                     </MudButton>
                 }
+                <MudTooltip Text="Every batch runs in one transaction. If any of them fails the whole script is undone.">
+                    <MudCheckBox @bind-Value="_singleTransaction" Size="Size.Small" Dense="true"
+                                 Disabled="_running" Label="Single transaction" />
+                </MudTooltip>
                 @if (_markdown is not null)
                 {
                     <MudButton Variant="Variant.Outlined" OnClick="Copy"
@@ -198,6 +202,7 @@
     private string _sql = "";
     private bool _running;
     private bool _checkingRoutines;
+    private bool _singleTransaction;
     private CancellationTokenSource? _cancel;
     private string? _markdown;
     private List<ResultSet> _resultSets = [];
@@ -277,7 +282,7 @@
         try
         {
             var run = await SqlRunner.RunAsMarkdownAsync(
-                entry, _sql, entry.TimeoutSeconds, null, _cancel.Token);
+                entry, _sql, entry.TimeoutSeconds, null, _cancel.Token, _singleTransaction);
 
             (_markdown, _resultSets) = (run.Markdown, run.ResultSets);
             _rendered = MarkdownView.Render(_markdown);

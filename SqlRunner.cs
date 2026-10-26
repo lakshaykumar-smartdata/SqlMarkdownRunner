@@ -95,7 +95,8 @@ public partial class SqlRunner
     /// <summary>Runs the script and returns the whole session as one markdown document.</summary>
     public static async Task<RunResult> RunAsMarkdownAsync(
         DbConnectionEntry entry, string sql, int commandTimeoutSeconds,
-        IReadOnlyList<(string Name, string? Value)>? arguments = null, CancellationToken ct = default)
+        IReadOnlyList<(string Name, string? Value)>? arguments = null, CancellationToken ct = default,
+        bool singleTransaction = false)
     {
         var md = new StringBuilder();
         var sets = new List<ResultSet>();
@@ -110,9 +111,13 @@ public partial class SqlRunner
 
         await using var conn = new SqlConnection(Connect(entry));
         var batches = SplitBatches(sql).ToList();
+        SqlTransaction? tx = null;
         try
         {
             await conn.OpenAsync(ct);
+            if (singleTransaction) tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
+
+            var failed = false;
             for (var i = 0; i < batches.Count; i++)
             {
                 md.AppendLine($"## Batch {i + 1} of {batches.Count}");
@@ -121,8 +126,34 @@ public partial class SqlRunner
                 md.AppendLine(batches[i]);
                 md.AppendLine("```");
                 md.AppendLine();
-                await AppendBatchResultAsync(
-                    conn, batches[i], commandTimeoutSeconds, arguments, md, sets, i + 1, ct);
+                var ok = await AppendBatchResultAsync(
+                    conn, tx, batches[i], commandTimeoutSeconds, arguments, md, sets, i + 1, ct);
+                md.AppendLine();
+
+                // Carrying on would pile more work onto a transaction that is about to be undone.
+                if (tx is not null && !ok)
+                {
+                    failed = true;
+                    if (i + 1 < batches.Count)
+                        md.AppendLine($"> Stopped — {batches.Count - i - 1} later batch(es) were not run.");
+                    break;
+                }
+            }
+
+            if (tx is not null)
+            {
+                if (failed)
+                {
+                    md.AppendLine(await TryRollbackAsync(tx)
+                        ? "> **Rolled back.** A batch failed, so nothing this script did was kept."
+                        : "> **Rolled back by the server.** Nothing this script did was kept.");
+                }
+                else
+                {
+                    await tx.CommitAsync(ct);
+                    md.AppendLine("> **Committed.** The whole script ran as one transaction.");
+                }
+
                 md.AppendLine();
             }
         }
@@ -130,25 +161,35 @@ public partial class SqlRunner
         // so the token is what decides, not the exception type.
         catch (Exception) when (ct.IsCancellationRequested)
         {
-            md.AppendLine("> **Cancelled.** Batches that already finished are shown above.");
+            md.AppendLine(tx is not null && await TryRollbackAsync(tx)
+                ? "> **Cancelled and rolled back.** Nothing this script did was kept."
+                : "> **Cancelled.** Batches that already finished are shown above.");
             md.AppendLine();
         }
         catch (Exception ex)
         {
+            if (tx is not null) await TryRollbackAsync(tx);
             md.AppendLine($"> **Error:** {ex.Message.Replace("\n", " ")}");
+            if (tx is not null) md.AppendLine("> **Rolled back.** Nothing this script did was kept.");
             md.AppendLine();
+        }
+        finally
+        {
+            if (tx is not null) await tx.DisposeAsync();
         }
 
         md.AppendLine($"_Total time: {sw.ElapsedMilliseconds} ms_");
         return new RunResult(md.ToString(), sets);
     }
 
-    private static async Task AppendBatchResultAsync(
-        SqlConnection conn, string batch, int timeout,
+    /// <summary>False when the batch raised a SQL error, so a transactional run can stop.</summary>
+    private static async Task<bool> AppendBatchResultAsync(
+        SqlConnection conn, SqlTransaction? tx, string batch, int timeout,
         IReadOnlyList<(string Name, string? Value)>? arguments, StringBuilder md,
         List<ResultSet> sets, int batchNumber, CancellationToken ct)
     {
-        await using var cmd = new SqlCommand(batch, conn) { CommandTimeout = timeout };
+        var ok = true;
+        await using var cmd = new SqlCommand(batch, conn) { CommandTimeout = timeout, Transaction = tx };
 
         // Sent as strings and left to SQL Server to convert, so the caller does not have to
         // quote or format anything. An empty box means NULL.
@@ -183,6 +224,7 @@ public partial class SqlRunner
             // SqlClient reports a cancel as an ordinary error, so let it out to stop the loop
             // rather than marking one batch failed and carrying on to the next.
             md.AppendLine($"> **Error {ex.Number}** (line {ex.LineNumber}): {ex.Message.Replace("\n", " ")}");
+            ok = false;
         }
         finally
         {
@@ -190,6 +232,24 @@ public partial class SqlRunner
         }
 
         foreach (var m in messages) md.AppendLine($"> {m.Replace("\n", " ")}");
+        return ok;
+    }
+
+    /// <summary>
+    /// Best effort, and on its own token: disposing the connection would roll back anyway, but a
+    /// cancelled run must still roll back, and the document has to say that it happened.
+    /// </summary>
+    private static async Task<bool> TryRollbackAsync(SqlTransaction tx)
+    {
+        try
+        {
+            await tx.RollbackAsync(CancellationToken.None);
+            return true;
+        }
+        catch (Exception ex) when (ex is SqlException or InvalidOperationException)
+        {
+            return false;   // the server rolled it back already, or the connection is gone
+        }
     }
 
     private static async Task AppendTableAsync(
