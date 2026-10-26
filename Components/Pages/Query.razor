@@ -64,6 +64,8 @@
                                Disabled="@(_resultSets.Count == 0)"
                                StartIcon="@Icons.Material.Outlined.GridOn">Export .xlsx</MudButton>
                 }
+                <MudButton Variant="Variant.Text" OnClick="PasteAsync" Disabled="_running"
+                           StartIcon="@Icons.Material.Outlined.ContentPaste">Paste</MudButton>
                 <MudButton Variant="Variant.Text" OnClick="Clear">Clear</MudButton>
                 <MudSpacer />
                 @if (Session.Current is { } c)
@@ -381,6 +383,24 @@
     }
 
     private void Clear() => (_sql, _markdown, _rendered, _resultSets) = ("", null, default, []);
+
+    /// <summary>
+    /// The browser does the insert so the Paste button and Ctrl+V put the GO in the same place;
+    /// all that comes back is whether the clipboard had anything in it.
+    /// </summary>
+    private async Task PasteAsync()
+    {
+        try
+        {
+            if (!await JS.InvokeAsync<bool>("smr.paste"))
+                Snackbar.Add("Nothing on the clipboard.", Severity.Info);
+        }
+        catch (JSException)
+        {
+            Snackbar.Add("The browser would not let the page read the clipboard — use Ctrl+V.",
+                Severity.Warning);
+        }
+    }
 
     /// <summary>Column names and types as a markdown table, ready to paste into an LLM.</summary>
     private async Task CopySchemaAsync(DbObject o)
