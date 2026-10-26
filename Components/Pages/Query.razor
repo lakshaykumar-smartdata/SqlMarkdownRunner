@@ -54,18 +54,7 @@
                     <MudCheckBox @bind-Value="_singleTransaction" Size="Size.Small" Dense="true"
                                  Disabled="_running" Label="Single transaction" />
                 </MudTooltip>
-                @if (_markdown is not null)
-                {
-                    <MudButton Variant="Variant.Outlined" OnClick="Copy"
-                               StartIcon="@Icons.Material.Outlined.ContentCopy">Copy markdown</MudButton>
-                    <MudButton Variant="Variant.Outlined" OnClick="Download"
-                               StartIcon="@Icons.Material.Outlined.Download">Download .md</MudButton>
-                    <MudButton Variant="Variant.Outlined" OnClick="DownloadWorkbook"
-                               Disabled="@(_resultSets.Count == 0)"
-                               StartIcon="@Icons.Material.Outlined.GridOn">Export .xlsx</MudButton>
-                }
-                <MudButton Variant="Variant.Text" OnClick="PasteAsync" Disabled="_running"
-                           StartIcon="@Icons.Material.Outlined.ContentPaste">Paste</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="PasteAsync" Disabled="_running">Paste</MudButton>
                 <MudButton Variant="Variant.Text" OnClick="Clear">Clear</MudButton>
                 <MudSpacer />
                 @if (Session.Current is { } c)
@@ -75,6 +64,19 @@
                     </MudText>
                 }
             </MudStack>
+
+            @if (_markdown is not null)
+            {
+                <MudStack Row="true" Spacing="2" Class="mt-2" Wrap="Wrap.Wrap">
+                    <MudButton Variant="Variant.Outlined" OnClick="Copy"
+                               StartIcon="@Icons.Material.Outlined.ContentCopy">Copy markdown</MudButton>
+                    <MudButton Variant="Variant.Outlined" OnClick="Download"
+                               StartIcon="@Icons.Material.Outlined.Download">Download .md</MudButton>
+                    <MudButton Variant="Variant.Outlined" OnClick="DownloadWorkbook"
+                               Disabled="@(_resultSets.Count == 0)"
+                               StartIcon="@Icons.Material.Outlined.GridOn">Export .xlsx</MudButton>
+                </MudStack>
+            }
         </MudPaper>
     </MudItem>
 
