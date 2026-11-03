@@ -56,6 +56,8 @@ window.smr.paste = async () => {
     return true;
 };
 
+window.smr.resetFile = id => { const el = document.getElementById(id); if (el) el.value = ''; };
+
 // Blazor hands binary back as base64; turn it into a file the browser will save.
 window.smr.downloadBytes = (name, base64, type) => {
     const binary = atob(base64);

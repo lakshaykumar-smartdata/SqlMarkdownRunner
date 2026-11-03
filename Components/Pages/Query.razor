@@ -54,6 +54,9 @@
                     <MudCheckBox @bind-Value="_singleTransaction" Size="Size.Small" Dense="true"
                                  Disabled="_running" Label="Single transaction" />
                 </MudTooltip>
+                <MudButton HtmlTag="label" for="@FileInputId" Variant="Variant.Text"
+                           Disabled="_running">Open .sql</MudButton>
+                <InputFile id="@FileInputId" accept=".sql,.txt" class="d-none" OnChange="LoadScriptAsync" />
                 <MudButton Variant="Variant.Text" OnClick="PasteAsync" Disabled="_running">Paste</MudButton>
                 <MudButton Variant="Variant.Text" OnClick="Clear">Clear</MudButton>
                 <MudSpacer />
@@ -385,6 +388,36 @@
     }
 
     private void Clear() => (_sql, _markdown, _rendered, _resultSets) = ("", null, default, []);
+
+    private const string FileInputId = "sql-file";
+
+    /// <summary>A whole deployment script is still well under this; it only stops a stray .bak.</summary>
+    private const long MaxScriptBytes = 10 * 1024 * 1024;
+
+    /// <summary>Loads a .sql file into the editor so Run treats it like anything else typed there.</summary>
+    private async Task LoadScriptAsync(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        try
+        {
+            await using var stream = file.OpenReadStream(MaxScriptBytes);
+            // SSMS writes some scripts as UTF-16; the BOM says which, so let the reader decide.
+            using var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true);
+            var sql = await reader.ReadToEndAsync();
+
+            Clear();
+            _sql = sql;
+            Snackbar.Add($"Loaded {file.Name} — press Run.", Severity.Success);
+        }
+        catch (IOException ex)
+        {
+            Snackbar.Add($"Could not read {file.Name}: {ex.Message}", Severity.Error);
+        }
+
+        // The input keeps the name it was given, and an unchanged selection raises no second
+        // event - so picking the same file after an edit would do nothing until this clears it.
+        await JS.InvokeVoidAsync("smr.resetFile", FileInputId);
+    }
 
     /// <summary>
     /// The browser does the insert so the Paste button and Ctrl+V put the GO in the same place;
