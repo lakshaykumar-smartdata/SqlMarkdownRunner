@@ -55,7 +55,7 @@
                                  Disabled="_running" Label="Single transaction" />
                 </MudTooltip>
                 <MudButton HtmlTag="label" for="@FileInputId" Variant="Variant.Text"
-                           Disabled="_running">Open .sql</MudButton>
+                           Disabled="_running">Run .sql file</MudButton>
                 <InputFile id="@FileInputId" accept=".sql,.txt" class="d-none" OnChange="LoadScriptAsync" />
                 <MudButton Variant="Variant.Text" OnClick="PasteAsync" Disabled="_running">Paste</MudButton>
                 <MudButton Variant="Variant.Text" OnClick="Clear">Clear</MudButton>
@@ -199,7 +199,9 @@
 
 @if (_markdown is not null)
 {
-    <MudText Typo="Typo.h6" Class="mt-8 mb-3">Result</MudText>
+    <MudText Typo="Typo.h6" Class="mt-8 mb-3">
+        Result@(_fileName is null ? "" : $" — {_fileName}")
+    </MudText>
     <MudPaper Elevation="0" Outlined="true" Class="pa-6">
         <div class="rendered">@_rendered</div>
     </MudPaper>
@@ -207,6 +209,8 @@
 
 @code {
     private string _sql = "";
+    /// <summary>Set when the result came from a file, which is otherwise nowhere on screen.</summary>
+    private string? _fileName;
     private bool _running;
     private bool _checkingRoutines;
     private bool _singleTransaction;
@@ -279,17 +283,24 @@
         }
     }
 
-    private async Task RunAsync()
+    private Task RunAsync()
     {
-        if (Session.Current is not { } entry || string.IsNullOrWhiteSpace(_sql)) return;
-        if (!await AllowedOnThisConnectionAsync(entry)) return;
-        if (!await ConfirmUnfilteredWritesAsync()) return;
+        _fileName = null;
+        return RunScriptAsync(_sql);
+    }
+
+    /// <param name="label">Names the auto-saved run; the subject of the SQL when nothing better.</param>
+    private async Task RunScriptAsync(string sql, string? label = null)
+    {
+        if (Session.Current is not { } entry || string.IsNullOrWhiteSpace(sql)) return;
+        if (!await AllowedOnThisConnectionAsync(entry, sql)) return;
+        if (!await ConfirmUnfilteredWritesAsync(sql)) return;
 
         (_running, _cancel) = (true, new CancellationTokenSource());
         try
         {
             var run = await SqlRunner.RunAsMarkdownAsync(
-                entry, _sql, entry.TimeoutSeconds, null, _cancel.Token, _singleTransaction);
+                entry, sql, entry.TimeoutSeconds, null, _cancel.Token, _singleTransaction);
 
             (_markdown, _resultSets) = (run.Markdown, run.ResultSets);
             _rendered = MarkdownView.Render(_markdown);
@@ -300,20 +311,20 @@
             (_running, _cancel) = (false, null);
         }
 
-        History.Add(entry.Name, _sql);
+        History.Add(entry.Name, sql);
         if (entry.AutoSaveMarkdown && _markdown is not null)
-            Runs.Save(entry.Name, _markdown, SqlRunner.SubjectOf(_sql));
+            Runs.Save(entry.Name, _markdown, label ?? SqlRunner.SubjectOf(sql));
     }
 
     /// <summary>
     /// A connection marked production refuses anything that writes, with no override. A direct
     /// INSERT/UPDATE/DELETE is caught by scanning; an EXEC is not, so what it reaches gets read.
     /// </summary>
-    private async Task<bool> AllowedOnThisConnectionAsync(DbConnectionEntry entry)
+    private async Task<bool> AllowedOnThisConnectionAsync(DbConnectionEntry entry, string sql)
     {
         if (!entry.IsProduction) return true;
 
-        var writes = SqlRunner.WriteStatements(_sql);
+        var writes = SqlRunner.WriteStatements(sql);
         if (writes.Count > 0)
         {
             await RefusedAsync(entry,
@@ -321,21 +332,21 @@
             return false;
         }
 
-        if (SqlRunner.UsesDynamicSql(_sql))
+        if (SqlRunner.UsesDynamicSql(sql))
         {
             await RefusedAsync(entry, "This script builds SQL as it runs, so what it would do "
                                       + "cannot be known before running it.");
             return false;
         }
 
-        if (SqlRunner.ExecutedRoutines(_sql).Count == 0) return true;
+        if (SqlRunner.ExecutedRoutines(sql).Count == 0) return true;
 
         // Reading the called routines costs a round trip each, so it waits until there is an EXEC.
         _checkingRoutines = true;
         List<SqlRunner.RoutineWrite> reached;
         try
         {
-            reached = await SqlRunner.ExecWritesAsync(entry, _sql);
+            reached = await SqlRunner.ExecWritesAsync(entry, sql);
         }
         catch (Exception ex)
         {
@@ -363,9 +374,9 @@
             yesText: "OK");
 
     /// <summary>An UPDATE or DELETE with no WHERE hits every row, so make the user say yes first.</summary>
-    private async Task<bool> ConfirmUnfilteredWritesAsync()
+    private async Task<bool> ConfirmUnfilteredWritesAsync(string sql)
     {
-        var risky = SqlRunner.StatementsMissingWhere(_sql);
+        var risky = SqlRunner.StatementsMissingWhere(sql);
         if (risky.Count == 0) return true;
 
         var what = risky.Count == 1 ? "This statement has" : $"These {risky.Count} statements have";
@@ -394,29 +405,38 @@
     /// <summary>A whole deployment script is still well under this; it only stops a stray .bak.</summary>
     private const long MaxScriptBytes = 10 * 1024 * 1024;
 
-    /// <summary>Loads a .sql file into the editor so Run treats it like anything else typed there.</summary>
+    /// <summary>
+    /// Runs a .sql file straight off the disk. The editor is left alone: a deployment script is
+    /// far too long to read in a textarea, and the markdown result is the point of opening it.
+    /// </summary>
     private async Task LoadScriptAsync(InputFileChangeEventArgs e)
     {
         var file = e.File;
+        string sql;
         try
         {
             await using var stream = file.OpenReadStream(MaxScriptBytes);
             // SSMS writes some scripts as UTF-16; the BOM says which, so let the reader decide.
             using var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true);
-            var sql = await reader.ReadToEndAsync();
-
-            Clear();
-            _sql = sql;
-            Snackbar.Add($"Loaded {file.Name} — press Run.", Severity.Success);
+            sql = await reader.ReadToEndAsync();
         }
         catch (IOException ex)
         {
             Snackbar.Add($"Could not read {file.Name}: {ex.Message}", Severity.Error);
+            sql = "";
         }
 
         // The input keeps the name it was given, and an unchanged selection raises no second
-        // event - so picking the same file after an edit would do nothing until this clears it.
+        // event - so running the same file twice would do nothing until this clears it.
         await JS.InvokeVoidAsync("smr.resetFile", FileInputId);
+
+        if (sql.Length > 0)
+        {
+            // Drop the old result first: if a guard refuses this file, the heading would
+            // otherwise put its name over the previous run's tables.
+            (_fileName, _markdown, _rendered, _resultSets) = (file.Name, null, default, []);
+            await RunScriptAsync(sql, Path.GetFileNameWithoutExtension(file.Name));
+        }
     }
 
     /// <summary>
