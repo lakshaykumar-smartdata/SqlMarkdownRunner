@@ -49,15 +49,17 @@ else
                          Icon="@(context.AutoSaveMarkdown ? Icons.Material.Outlined.CheckCircle : Icons.Material.Outlined.DoNotDisturbOn)" />
             </MudTd>
             <MudTd>
-                @if (context.IsProduction)
-                {
-                    <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined">read-only</MudChip>
-                }
+                <MudTooltip Text="@(context.IsProduction ? "Read-only — anything that writes is refused" : "Writes are allowed")">
+                    <MudSwitch T="bool" @key="@($"{context.Name}/{_prodVersion}")"
+                               Value="context.IsProduction" Size="Size.Small" Color="Color.Error"
+                               ValueChanged="@(on => SetProductionAsync(context, on))" />
+                </MudTooltip>
             </MudTd>
             <MudTd>
-                <MudIcon Size="Size.Small"
-                         Color="@(context.IsActive ? Color.Success : Color.Default)"
-                         Icon="@(context.IsActive ? Icons.Material.Outlined.CheckCircle : Icons.Material.Outlined.VisibilityOff)" />
+                <MudTooltip Text="Show in the connection picker">
+                    <MudSwitch T="bool" Value="context.IsActive" Size="Size.Small" Color="Color.Success"
+                               ValueChanged="@(on => Replace(context, context with { IsActive = on }))" />
+                </MudTooltip>
             </MudTd>
             <MudTd Class="nowrap">
                 <MudTooltip Text="Edit">
@@ -180,6 +182,7 @@ else
     private bool _autoSave = true;
     private bool _isProduction;
     private bool _isActive = true;
+    private int _prodVersion;
 
     protected override void OnInitialized() => _connections = Store.Load();
 
@@ -224,6 +227,34 @@ else
         (_timeout, _autoSave) = (c.TimeoutSeconds, c.AutoSaveMarkdown);
         (_isProduction, _isActive) = (c.IsProduction, c.IsActive);
         ConnectionString = c.ConnectionString;
+    }
+
+    /// <summary>
+    /// Flips one flag straight from the table. The edit form stays for everything else, so if it
+    /// happens to hold this row it is re-loaded - otherwise its stale copy would undo the flip.
+    /// </summary>
+    private void Replace(DbConnectionEntry old, DbConnectionEntry updated)
+    {
+        _connections[_connections.FindIndex(x => x.Name == old.Name)] = updated;
+        Persist();
+        if (_editingOriginal == old.Name) Edit(updated);
+    }
+
+    private async Task SetProductionAsync(DbConnectionEntry c, bool on)
+    {
+        // Switching it off drops the write guard on a real database, so make that deliberate.
+        if (!on && await Dialogs.ShowMessageBoxAsync(
+                "Allow writes to this connection?", c.Name,
+                yesText: "Allow writes", cancelText: "Cancel") != true)
+        {
+            // The switch has already drawn itself off, and re-rendering alone will not pull it
+            // back: Blazor skips a parameter whose value has not changed since the last frame.
+            // A fresh list makes the table render again, and a new key builds a new switch.
+            (_connections, _prodVersion) = ([.. _connections], _prodVersion + 1);
+            return;
+        }
+
+        Replace(c, c with { IsProduction = on });
     }
 
     private async Task DeleteAsync(DbConnectionEntry c)
