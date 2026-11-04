@@ -1,0 +1,49 @@
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+@* The three things anyone does with a finished run, wherever that run came from. *@
+<MudStack Row="true" Spacing="2" Class="@Class" Wrap="Wrap.Wrap">
+    <MudButton Variant="Variant.Outlined" OnClick="Copy"
+               StartIcon="@Icons.Material.Outlined.ContentCopy">Copy markdown</MudButton>
+    <MudButton Variant="Variant.Outlined" OnClick="Download"
+               StartIcon="@Icons.Material.Outlined.Download">Download .md</MudButton>
+    <MudButton Variant="Variant.Outlined" OnClick="DownloadWorkbook"
+               Disabled="@(ResultSets.Count == 0)"
+               StartIcon="@Icons.Material.Outlined.GridOn">Export .xlsx</MudButton>
+</MudStack>
+
+@code {
+    [Parameter, EditorRequired] public string Markdown { get; set; } = "";
+    [Parameter] public List<ResultSet> ResultSets { get; set; } = [];
+    [Parameter] public string Class { get; set; } = "mt-2";
+
+    private async Task Copy()
+    {
+        var copied = await JS.InvokeAsync<bool>("smr.copy", Markdown);
+
+        Snackbar.Add(
+            copied ? "Markdown copied" : "The browser would not let the page copy — select it and use Ctrl+C.",
+            copied ? Severity.Success : Severity.Warning);
+    }
+
+    private Task Download() =>
+        JS.InvokeVoidAsync("smr.download", $"sql-run-{DateTime.Now:yyyyMMdd-HHmmss}.md", Markdown).AsTask();
+
+    private async Task DownloadWorkbook()
+    {
+        try
+        {
+            var bytes = ResultWorkbook.Build(ResultSets);
+
+            await JS.InvokeVoidAsync("smr.downloadBytes",
+                $"sql-run-{DateTime.Now:yyyyMMdd-HHmmss}.xlsx",
+                Convert.ToBase64String(bytes),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        }
+        catch (Exception ex)
+        {
+            // A failed export should say so, not take the circuit down with it.
+            Snackbar.Add($"Export failed: {ex.Message}", Severity.Error);
+        }
+    }
+}

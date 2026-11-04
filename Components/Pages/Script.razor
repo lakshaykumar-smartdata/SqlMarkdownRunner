@@ -1,0 +1,173 @@
+@page "/script"
+@implements IDisposable
+@inject Session Session
+@inject ScriptRunner Runner
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>Run script</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3" Class="mb-4">
+    <MudText Typo="Typo.h5">Run script</MudText>
+    @if (Session.Current?.IsProduction == true)
+    {
+        <MudChip T="string" Color="Color.Error" Variant="Variant.Filled" Size="Size.Small"
+                 Icon="@Icons.Material.Filled.WarningAmber" Class="prod-badge">
+            Production — reads only
+        </MudChip>
+    }
+</MudStack>
+
+@if (Session.Current is null)
+{
+    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="mb-4">
+        No connections yet — <MudLink Href="settings">add one first</MudLink>.
+    </MudAlert>
+}
+
+<MudPaper Elevation="0" Outlined="true" Class="pa-6">
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">
+        Pick a <code>.sql</code> file from this PC and it runs on
+        <strong>@(Session.Name ?? "the selected connection")</strong> straight away, batch by batch
+        at every <code>GO</code>. Nothing is loaded into an editor — a deployment script is too long
+        to read in one, and the markdown below is the point of opening it.
+    </MudText>
+
+    <MudStack Row="true" Spacing="2" Class="mt-4" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+        @if (_running)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="Cancel"
+                       StartIcon="@Icons.Material.Filled.Stop">Stop</MudButton>
+        }
+        else
+        {
+            <MudButton HtmlTag="label" for="@FileInputId" Variant="Variant.Filled" Color="Color.Primary"
+                       Disabled="@(Session.Current is null || _checkingRoutines)"
+                       StartIcon="@Icons.Material.Filled.UploadFile">
+                @(_checkingRoutines ? "Checking what this EXEC reaches…" : "Choose .sql file")
+            </MudButton>
+        }
+        <InputFile id="@FileInputId" accept=".sql,.txt" class="d-none" OnChange="RunFileAsync" />
+
+        <MudTooltip Text="Every batch runs in one transaction. If any of them fails the whole script is undone.">
+            <MudCheckBox @bind-Value="_singleTransaction" Size="Size.Small" Dense="true"
+                         Disabled="_running" Label="Single transaction" />
+        </MudTooltip>
+
+        <MudSpacer />
+
+        @if (Session.Current is { } c)
+        {
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                timeout @c.TimeoutSeconds s · auto-save @(c.AutoSaveMarkdown ? "on" : "off")@(c.IsProduction ? " · read-only" : "")
+            </MudText>
+        }
+    </MudStack>
+
+    @if (_fileName is not null)
+    {
+        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-3">
+            @_fileName · @SizeText@(_running ? " · running…" : "")
+        </MudText>
+    }
+
+    @if (_markdown is not null)
+    {
+        <ResultActions Markdown="@_markdown" ResultSets="_resultSets" Class="mt-4" />
+    }
+</MudPaper>
+
+@if (_markdown is not null)
+{
+    <MudText Typo="Typo.h6" Class="mt-8 mb-3">Result — @_fileName</MudText>
+    <MudPaper Elevation="0" Outlined="true" Class="pa-6">
+        <div class="rendered">@_rendered</div>
+    </MudPaper>
+}
+
+@code {
+    private string? _fileName;
+    private long _bytes;
+    private bool _running, _checkingRoutines, _singleTransaction;
+    private CancellationTokenSource? _cancel;
+    private string? _markdown;
+    private List<ResultSet> _resultSets = [];
+    private MarkupString _rendered;
+
+    private string SizeText => _bytes < 1024 ? $"{_bytes} bytes" : $"{_bytes / 1024.0:N1} KB";
+
+    private const string FileInputId = "script-file";
+
+    /// <summary>A whole deployment script is still well under this; it only stops a stray .bak.</summary>
+    private const long MaxScriptBytes = 10 * 1024 * 1024;
+
+    protected override void OnInitialized() => Session.Changed += Refresh;
+
+    public void Dispose() => Session.Changed -= Refresh;
+
+    /// <summary>The badge and the caption describe the connection, so they follow the picker.</summary>
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    private async Task RunFileAsync(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        string sql;
+        try
+        {
+            await using var stream = file.OpenReadStream(MaxScriptBytes);
+            // SSMS writes some scripts as UTF-16; the BOM says which, so let the reader decide.
+            using var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true);
+            sql = await reader.ReadToEndAsync();
+        }
+        catch (IOException ex)
+        {
+            Snackbar.Add($"Could not read {file.Name}: {ex.Message}", Severity.Error);
+            return;
+        }
+        finally
+        {
+            // The input keeps the name it was given, and an unchanged selection raises no second
+            // event - so running the same file twice would do nothing until this clears it.
+            await JS.InvokeVoidAsync("smr.resetFile", FileInputId);
+        }
+
+        if (sql.Length == 0)
+        {
+            Snackbar.Add($"{file.Name} is empty.", Severity.Info);
+            return;
+        }
+
+        // Drop the old result first, and draw that: a guard can hold the run open on a dialog,
+        // and the heading would otherwise put this file's name over the last run's tables.
+        (_fileName, _bytes, _markdown, _rendered, _resultSets) = (file.Name, file.Size, null, default, []);
+        StateHasChanged();
+
+        if (Session.Current is not { } entry) return;
+
+        (_running, _cancel) = (true, new CancellationTokenSource());
+        try
+        {
+            var run = await Runner.RunAsync(
+                entry, sql, Path.GetFileNameWithoutExtension(file.Name), _singleTransaction,
+                _cancel.Token, checking: SetChecking);
+
+            if (run is null) return;
+
+            (_markdown, _resultSets) = (run.Markdown, run.ResultSets);
+            _rendered = MarkdownView.Render(_markdown);
+        }
+        finally
+        {
+            _cancel.Dispose();
+            (_running, _cancel) = (false, null);
+        }
+    }
+
+    private void SetChecking(bool on)
+    {
+        _checkingRoutines = on;
+        StateHasChanged();
+    }
+
+    private void Cancel() => _cancel?.Cancel();
+}

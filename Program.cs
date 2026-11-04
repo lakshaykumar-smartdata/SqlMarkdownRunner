@@ -17,6 +17,8 @@ builder.Services.AddSingleton<ObjectCache>();
 builder.Services.AddSingleton<SavedRuns>();
 builder.Services.AddSingleton<ObjectVersions>();
 builder.Services.AddScoped<Session>();
+// Dialogs are per-circuit, and every guard it asks runs through one.
+builder.Services.AddScoped<ScriptRunner>();
 builder.Services.AddMudServices();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();

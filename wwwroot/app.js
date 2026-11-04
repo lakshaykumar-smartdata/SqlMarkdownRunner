@@ -1,5 +1,21 @@
 window.smr = {
-    copy: text => navigator.clipboard.writeText(text),
+    // The clipboard API rejects when the page is not focused or the browser forbids it, and an
+    // unhandled rejection takes the circuit down with it. Say whether it worked instead.
+    copy: async text => {
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch {
+            const box = document.createElement('textarea');
+            box.value = text;
+            box.style.cssText = 'position:fixed;opacity:0';
+            document.body.appendChild(box);
+            box.select();
+            const copied = document.execCommand('copy');
+            box.remove();
+            return copied;
+        }
+    },
     download: (name, text) => {
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob([text], { type: 'text/markdown' }));
