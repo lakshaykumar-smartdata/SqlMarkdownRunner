@@ -27,10 +27,10 @@
 
 <MudPaper Elevation="0" Outlined="true" Class="pa-6">
     <MudText Typo="Typo.body2" Class="mud-text-secondary">
-        Pick a <code>.sql</code> file from this PC and it runs on
-        <strong>@(Session.Name ?? "the selected connection")</strong> straight away, batch by batch
-        at every <code>GO</code>. Nothing is loaded into an editor — a deployment script is too long
-        to read in one, and the markdown below is the point of opening it.
+        Pick a <code>.sql</code> file from this PC, then Run it on
+        <strong>@(Session.Name ?? "the selected connection")</strong>, batch by batch at every
+        <code>GO</code>. Nothing is loaded into an editor — a deployment script is too long to read
+        in one, and the markdown below is the point of opening it.
     </MudText>
 
     <MudStack Row="true" Spacing="2" Class="mt-4" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
@@ -41,13 +41,21 @@
         }
         else
         {
-            <MudButton HtmlTag="label" for="@FileInputId" Variant="Variant.Filled" Color="Color.Primary"
+            @* Nothing runs on its own: a picked file waits here until Run is pressed. *@
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RunAsync"
+                       Disabled="@(Session.Current is null || _sql is null || _checkingRoutines)"
+                       StartIcon="@Icons.Material.Filled.PlayArrow">
+                @(_checkingRoutines ? "Checking what this EXEC reaches…" : "Run")
+            </MudButton>
+            <MudButton HtmlTag="label" for="@FileInputId"
+                       Variant="@(_sql is null ? Variant.Filled : Variant.Outlined)"
+                       Color="@(_sql is null ? Color.Primary : Color.Default)"
                        Disabled="@(Session.Current is null || _checkingRoutines)"
                        StartIcon="@Icons.Material.Filled.UploadFile">
-                @(_checkingRoutines ? "Checking what this EXEC reaches…" : "Choose .sql file")
+                @(_sql is null ? "Choose .sql file" : "Choose another")
             </MudButton>
         }
-        <InputFile id="@FileInputId" accept=".sql,.txt" class="d-none" OnChange="RunFileAsync" />
+        <InputFile id="@FileInputId" accept=".sql,.txt" class="d-none" OnChange="LoadFileAsync" />
 
         <MudTooltip Text="Every batch runs in one transaction. If any of them fails the whole script is undone.">
             <MudCheckBox @bind-Value="_singleTransaction" Size="Size.Small" Dense="true"
@@ -67,7 +75,7 @@
     @if (_fileName is not null)
     {
         <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-3">
-            @_fileName · @SizeText@(_running ? " · running…" : "")
+            @_fileName · @SizeText@(_running ? " · running…" : _markdown is null ? " · ready to run" : "")
         </MudText>
     }
 
@@ -86,6 +94,8 @@
 }
 
 @code {
+    /// <summary>The file's text, held back until Run: picking it is not asking for it to run.</summary>
+    private string? _sql;
     private string? _fileName;
     private long _bytes;
     private bool _running, _checkingRoutines, _singleTransaction;
@@ -108,7 +118,7 @@
     /// <summary>The badge and the caption describe the connection, so they follow the picker.</summary>
     private void Refresh() => InvokeAsync(StateHasChanged);
 
-    private async Task RunFileAsync(InputFileChangeEventArgs e)
+    private async Task LoadFileAsync(InputFileChangeEventArgs e)
     {
         var file = e.File;
         string sql;
@@ -127,7 +137,7 @@
         finally
         {
             // The input keeps the name it was given, and an unchanged selection raises no second
-            // event - so running the same file twice would do nothing until this clears it.
+            // event - so picking the same file twice would do nothing until this clears it.
             await JS.InvokeVoidAsync("smr.resetFile", FileInputId);
         }
 
@@ -137,18 +147,21 @@
             return;
         }
 
-        // Drop the old result first, and draw that: a guard can hold the run open on a dialog,
-        // and the heading would otherwise put this file's name over the last run's tables.
-        (_fileName, _bytes, _markdown, _rendered, _resultSets) = (file.Name, file.Size, null, default, []);
-        StateHasChanged();
+        // The old result goes with the old file, or the heading would put this file's name
+        // over the last run's tables.
+        (_sql, _fileName, _bytes) = (sql, file.Name, file.Size);
+        (_markdown, _rendered, _resultSets) = (null, default, []);
+    }
 
-        if (Session.Current is not { } entry) return;
+    private async Task RunAsync()
+    {
+        if (Session.Current is not { } entry || _sql is null) return;
 
         (_running, _cancel) = (true, new CancellationTokenSource());
         try
         {
             var run = await Runner.RunAsync(
-                entry, sql, Path.GetFileNameWithoutExtension(file.Name), _singleTransaction,
+                entry, _sql, Path.GetFileNameWithoutExtension(_fileName!), _singleTransaction,
                 _cancel.Token, checking: SetChecking);
 
             if (run is null) return;
